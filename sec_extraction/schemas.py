@@ -6,6 +6,7 @@ from pathlib import Path
 
 BASE_DATA_URL = "https://data.sec.gov"
 BASE_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
+SEC_CIK_LOOKUP_URL = "https://www.sec.gov/Archives/edgar/cik-lookup-data.txt"
 DEFAULT_OUTPUT_DIR = Path("output") / "sec_company_extraction"
 DEFAULT_USER_AGENT = "KCNSC (aarango@kcnsc.doe.com)"
 REQUEST_DELAY_SECONDS = 0.2
@@ -145,6 +146,9 @@ CROSSWALK_FIELDNAMES = [
     "sec_company_name",
     "ticker",
     "cik",
+    "sec_record_found",
+    "sec_record_status",
+    "sec_match_source",
     "match_method",
     "match_confidence",
     "review_status",

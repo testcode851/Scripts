@@ -14,7 +14,12 @@ from typing import Any, Iterable
 import pandas as pd
 import requests
 
-from .schemas import BASE_DATA_URL, REQUEST_DELAY_SECONDS, TIMEOUT_SECONDS
+from .schemas import (
+    BASE_DATA_URL,
+    REQUEST_DELAY_SECONDS,
+    SEC_CIK_LOOKUP_URL,
+    TIMEOUT_SECONDS,
+)
 
 
 @dataclass(frozen=True)
@@ -157,6 +162,54 @@ def load_sec_ticker_map(client: SecClient) -> list[dict[str, str]]:
                 "sec_company_name": clean_text(item.get("title")),
             }
         )
+    return rows
+
+
+def load_sec_registrant_map(client: SecClient, cache_path: Path) -> list[dict[str, str]]:
+    """Load current and cumulative historical SEC registrant names."""
+    current_rows = load_sec_ticker_map(client)
+    current_by_cik = {row["cik"]: row for row in current_rows}
+    rows = [
+        {
+            **row,
+            "sec_record_status": "current",
+            "sec_match_source": "sec_company_tickers",
+        }
+        for row in current_rows
+    ]
+
+    if cache_path.exists():
+        lookup_text = cache_path.read_text(encoding="latin-1")
+    else:
+        lookup_text = client.get_text(SEC_CIK_LOOKUP_URL)
+        ensure_output_dir(cache_path.parent)
+        cache_path.write_text(lookup_text, encoding="latin-1")
+
+    seen = {(row["cik"], normalize_name(row["sec_company_name"])) for row in rows}
+    for line in lookup_text.splitlines():
+        try:
+            company_name, cik, _ = line.rsplit(":", 2)
+        except ValueError:
+            continue
+        normalized_cik = normalize_cik(cik)
+        normalized_company_name = normalize_name(company_name)
+        key = (normalized_cik, normalized_company_name)
+        if not normalized_company_name or key in seen:
+            continue
+
+        current = current_by_cik.get(normalized_cik)
+        status = "former_name" if current else "historical"
+        rows.append(
+            {
+                "ticker": current["ticker"] if current else "",
+                "cik": normalized_cik,
+                "sec_company_name": clean_text(company_name),
+                "sec_record_status": status,
+                "sec_match_source": "sec_cik_lookup",
+            }
+        )
+        seen.add(key)
+
     return rows
 
 

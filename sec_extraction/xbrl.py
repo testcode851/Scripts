@@ -67,17 +67,26 @@ def flatten_recent_filings(
 ) -> list[dict[str, Any]]:
     """Flatten parallel recent-filing arrays into row dictionaries."""
     recent = submissions.get("filings", {}).get("recent", {})
-    if not recent:
+    return flatten_filing_columns(recent, company)
+
+
+def flatten_filing_columns(
+    filing_columns: dict[str, Any], company: CompanyIdentifier
+) -> list[dict[str, Any]]:
+    """Flatten a column-oriented SEC filing payload into row dictionaries."""
+    if not filing_columns:
         return []
 
-    columns = list(recent.keys())
-    row_count = max((len(value) for value in recent.values() if isinstance(value, list)), default=0)
+    columns = list(filing_columns.keys())
+    row_count = max(
+        (len(value) for value in filing_columns.values() if isinstance(value, list)), default=0
+    )
     rows: list[dict[str, Any]] = []
 
     for index in range(row_count):
         row = {"ticker": company.ticker, "cik": company.cik}
         for column in columns:
-            values = recent.get(column)
+            values = filing_columns.get(column)
             row[column] = values[index] if isinstance(values, list) and index < len(values) else ""
         rows.append(row)
 

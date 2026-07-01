@@ -215,6 +215,9 @@ def run(args: argparse.Namespace) -> None:
         print(f"Full SEC extract rows exported: {len(result['extract_rows']):,}")
     print(f"Annual financial rows exported: {len(annual_rows):,}")
     print(f"10-K readable section rows exported: {len(section_rows):,}")
+    print(f"Extraction status: {result['status']}")
+    for warning in result["source_warnings"]:
+        print(f"Warning: {warning}")
 
 
 def main() -> None:

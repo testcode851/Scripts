@@ -163,8 +163,11 @@ BATCH_SUMMARY_FIELDNAMES = [
     "sec_company_name",
     "status",
     "output_dir",
+    "filing_count",
+    "ten_k_count",
     "xbrl_fact_count",
     "ten_k_section_count",
+    "source_warnings",
     "error",
 ]
 SEC_FINANCIAL_TAG_MAP = {

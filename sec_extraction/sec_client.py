@@ -61,6 +61,15 @@ class SecClient:
         """Fetch a JSON object from an SEC endpoint."""
         return self.get(url).json()
 
+    def get_json_if_available(self, url: str) -> dict[str, Any] | None:
+        """Fetch JSON, returning None when the SEC reports that it is unavailable."""
+        try:
+            return self.get_json(url)
+        except requests.HTTPError as exc:
+            if exc.response is not None and exc.response.status_code == 404:
+                return None
+            raise
+
     def get_text(self, url: str) -> str:
         """Fetch text content from an SEC endpoint."""
         response = self.get(url)

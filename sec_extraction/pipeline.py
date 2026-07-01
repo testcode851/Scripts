@@ -37,6 +37,7 @@ from .xbrl import (
     build_10k_section_readable_rows,
     build_profile_readable_row,
     extract_company_profile,
+    flatten_filing_columns,
     flatten_recent_filings,
     flatten_xbrl_facts,
     profile_to_extract_rows,
@@ -61,7 +62,16 @@ def extract_company(
     ensure_output_dir(output_dir)
 
     submissions = client.get_json(f"{BASE_DATA_URL}/submissions/CIK{company.cik}.json")
-    companyfacts = client.get_json(f"{BASE_DATA_URL}/api/xbrl/companyfacts/CIK{company.cik}.json")
+    source_warnings: list[str] = []
+    companyfacts_url = f"{BASE_DATA_URL}/api/xbrl/companyfacts/CIK{company.cik}.json"
+    try:
+        companyfacts = client.get_json_if_available(companyfacts_url)
+    except requests.RequestException as exc:
+        companyfacts = None
+        source_warnings.append(f"Company Facts request failed: {exc}")
+    if companyfacts is None:
+        companyfacts = {}
+        source_warnings.append("SEC Company Facts are unavailable for this CIK.")
 
     if save_raw_json:
         write_json(output_dir / "raw_submissions.json", submissions)
@@ -72,7 +82,7 @@ def extract_company(
     profile = extract_company_profile(submissions, company)
     extract_rows.extend(profile_to_extract_rows(profile))
 
-    filing_rows = flatten_recent_filings(submissions, company)
+    filing_rows = load_all_filing_rows(client, submissions, company, source_warnings)
 
     xbrl_rows = flatten_xbrl_facts(companyfacts, company)
     extract_rows.extend(xbrl_to_extract_rows(xbrl_rows))
@@ -85,32 +95,13 @@ def extract_company(
 
     for filing in filings_to_download:
         accession = filing.get("accessionNumber", "")
-        primary_document = filing.get("primaryDocument", "")
-        if not accession or not primary_document:
+        if not accession:
             continue
-
-        filing_dir = output_dir / "ten_k_documents" / accession
-        ensure_output_dir(filing_dir)
-
-        index_url = filing.get("filing_index_json_url", "")
-        if index_url:
-            index_json = client.get_json(index_url)
-            write_json(filing_dir / "filing_index.json", index_json)
-
-        primary_url = filing.get("primary_document_url", "")
-        if primary_url:
-            markup = client.get_text(primary_url)
-            (filing_dir / primary_document).write_text(markup, encoding="utf-8", errors="replace")
-            text = html_to_text(markup)
-            (filing_dir / "primary_document_text.txt").write_text(
-                text, encoding="utf-8", errors="replace"
-            )
-
-            sections = extract_10k_sections(text)
-            section_rows.extend(sections)
-            current_section_rows = section_to_extract_rows(sections, company, filing)
-            section_extract_rows.extend(current_section_rows)
-            extract_rows.extend(current_section_rows)
+        sections = download_filing_sections(client, filing, output_dir, source_warnings)
+        section_rows.extend(sections)
+        current_section_rows = section_to_extract_rows(sections, company, filing)
+        section_extract_rows.extend(current_section_rows)
+        extract_rows.extend(current_section_rows)
 
     add_crosswalk_context(extract_rows, company_context)
     add_crosswalk_context(section_extract_rows, company_context)
@@ -127,8 +118,117 @@ def extract_company(
         "ten_k_count": len(ten_k_rows),
         "xbrl_fact_count": len(xbrl_rows),
         "ten_k_section_count": len(section_rows),
+        "status": extraction_status(bool(companyfacts), len(ten_k_rows), source_warnings),
+        "source_warnings": source_warnings,
         "output_dir": str(output_dir),
     }
+
+
+def load_all_filing_rows(
+    client: SecClient,
+    submissions: dict[str, Any],
+    company: CompanyIdentifier,
+    source_warnings: list[str],
+) -> list[dict[str, Any]]:
+    """Load recent and supplemental SEC filing-history rows for one company."""
+    rows = flatten_recent_filings(submissions, company)
+    supplemental_files = submissions.get("filings", {}).get("files", [])
+    for metadata in supplemental_files:
+        filename = clean_text(metadata.get("name")) if isinstance(metadata, dict) else ""
+        if not filename:
+            continue
+        url = f"{BASE_DATA_URL}/submissions/{filename}"
+        try:
+            payload = client.get_json_if_available(url)
+        except requests.RequestException as exc:
+            source_warnings.append(f"Supplemental filing history failed ({filename}): {exc}")
+            continue
+        if payload is None:
+            source_warnings.append(f"Supplemental filing history unavailable: {filename}")
+            continue
+        rows.extend(flatten_filing_columns(payload, company))
+
+    unique_rows: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        accession = clean_text(row.get("accessionNumber"))
+        key = accession or f"{row.get('form', '')}:{row.get('filingDate', '')}:{len(unique_rows)}"
+        unique_rows.setdefault(key, row)
+    return list(unique_rows.values())
+
+
+def download_filing_sections(
+    client: SecClient,
+    filing: dict[str, Any],
+    output_dir: Path,
+    source_warnings: list[str],
+) -> list[dict[str, str]]:
+    """Download one filing where possible and return its extracted sections."""
+    accession = clean_text(filing.get("accessionNumber"))
+    filing_dir = output_dir / "ten_k_documents" / accession
+    ensure_output_dir(filing_dir)
+
+    index_url = clean_text(filing.get("filing_index_json_url"))
+    if index_url:
+        try:
+            index_json = client.get_json_if_available(index_url)
+            if index_json is not None:
+                write_json(filing_dir / "filing_index.json", index_json)
+        except (OSError, ValueError, requests.RequestException) as exc:
+            source_warnings.append(f"Filing index failed ({accession}): {exc}")
+
+    text = download_filing_text(client, filing, filing_dir, source_warnings)
+    if not text:
+        source_warnings.append(f"No readable filing document was available ({accession}).")
+        return []
+    return extract_10k_sections(text)
+
+
+def download_filing_text(
+    client: SecClient,
+    filing: dict[str, Any],
+    filing_dir: Path,
+    source_warnings: list[str],
+) -> str:
+    """Download primary filing HTML, falling back to complete submission text."""
+    accession = clean_text(filing.get("accessionNumber"))
+    primary_document = clean_text(filing.get("primaryDocument"))
+    primary_url = clean_text(filing.get("primary_document_url"))
+    if primary_url and primary_document:
+        try:
+            markup = client.get_text(primary_url)
+            (filing_dir / primary_document).write_text(markup, encoding="utf-8", errors="replace")
+            text = html_to_text(markup)
+            (filing_dir / "primary_document_text.txt").write_text(
+                text, encoding="utf-8", errors="replace"
+            )
+            return text
+        except (OSError, requests.RequestException) as exc:
+            source_warnings.append(f"Primary filing document failed ({accession}): {exc}")
+
+    submission_url = clean_text(filing.get("complete_submission_text_url"))
+    if submission_url:
+        try:
+            submission_text = client.get_text(submission_url)
+            (filing_dir / "complete_submission_text.txt").write_text(
+                submission_text, encoding="utf-8", errors="replace"
+            )
+            return html_to_text(submission_text)
+        except (OSError, requests.RequestException) as exc:
+            source_warnings.append(f"Complete submission text failed ({accession}): {exc}")
+    return ""
+
+
+def extraction_status(
+    companyfacts_available: bool, ten_k_count: int, source_warnings: list[str]
+) -> str:
+    """Classify a completed extraction according to the data sources available."""
+    if not companyfacts_available and not ten_k_count:
+        return "success_profile_only"
+    if not companyfacts_available:
+        return "success_no_xbrl"
+    if source_warnings:
+        return "partial_success"
+    return "success"
 
 
 def build_award_sec_summary_rows(
@@ -287,10 +387,13 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
                     "ticker": company.ticker,
                     "cik": company.cik,
                     "sec_company_name": company.company_name,
-                    "status": "success",
+                    "status": result["status"],
                     "output_dir": result["output_dir"],
+                    "filing_count": result["recent_filing_count"],
+                    "ten_k_count": result["ten_k_count"],
                     "xbrl_fact_count": result["xbrl_fact_count"],
                     "ten_k_section_count": result["ten_k_section_count"],
+                    "source_warnings": " | ".join(result["source_warnings"]),
                     "error": "",
                 }
             )
@@ -306,8 +409,11 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
                     "sec_company_name": clean_text(row.get("sec_company_name")),
                     "status": "failed",
                     "output_dir": "",
+                    "filing_count": "",
+                    "ten_k_count": "",
                     "xbrl_fact_count": "",
                     "ten_k_section_count": "",
+                    "source_warnings": "",
                     "error": str(exc),
                 }
             )

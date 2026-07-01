@@ -1,3 +1,5 @@
+"""Constants and output schemas shared by SEC extraction modules."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -10,7 +12,16 @@ REQUEST_DELAY_SECONDS = 0.2
 TIMEOUT_SECONDS = 30
 APPROVED_REVIEW_STATUS = "approved"
 DEFAULT_FINANCIAL_YEARS = 10
-HIGH_VALUE_10K_ITEMS = {"Item 1", "Item 1A", "Item 1C", "Item 3", "Item 7", "Item 7A", "Item 8", "Item 9A"}
+HIGH_VALUE_10K_ITEMS = {
+    "Item 1",
+    "Item 1A",
+    "Item 1C",
+    "Item 3",
+    "Item 7",
+    "Item 7A",
+    "Item 8",
+    "Item 9A",
+}
 
 EXTRACT_FIELDNAMES = [
     "record_type",
@@ -138,6 +149,19 @@ CROSSWALK_FIELDNAMES = [
     "match_confidence",
     "review_status",
     "review_notes",
+]
+BATCH_SUMMARY_FIELDNAMES = [
+    "original_company_name",
+    "ultimate_parent_name",
+    "ultimate_parent_uei",
+    "ticker",
+    "cik",
+    "sec_company_name",
+    "status",
+    "output_dir",
+    "xbrl_fact_count",
+    "ten_k_section_count",
+    "error",
 ]
 SEC_FINANCIAL_TAG_MAP = {
     "Revenues": "revenues",

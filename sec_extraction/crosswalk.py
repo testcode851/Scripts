@@ -1,3 +1,5 @@
+"""Build reviewed mappings between USAspending entities and SEC registrants."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -15,12 +17,18 @@ from .sec_client import (
     write_csv,
 )
 
-def resolve_usaspending_parents(company_input: Path, entity_master_path: Path) -> list[dict[str, str]]:
+
+def resolve_usaspending_parents(
+    company_input: Path, entity_master_path: Path
+) -> list[dict[str, str]]:
+    """Resolve input companies to parent names and UEIs from the entity master."""
     company_df = read_table(company_input)
     if "Company" not in company_df.columns:
         raise ValueError(f"{company_input} must include a Company column.")
 
-    input_names = [clean_text(value) for value in company_df["Company"].tolist() if clean_text(value)]
+    input_names = [
+        clean_text(value) for value in company_df["Company"].tolist() if clean_text(value)
+    ]
     if not entity_master_path.exists():
         return [
             {
@@ -41,7 +49,8 @@ def resolve_usaspending_parents(company_input: Path, entity_master_path: Path) -
     seen: set[tuple[str, str, str]] = set()
     for name in input_names:
         matches = entity_df[
-            entity_df["original_company_name"].astype(str).str.strip().str.casefold() == name.casefold()
+            entity_df["original_company_name"].astype(str).str.strip().str.casefold()
+            == name.casefold()
         ]
         if matches.empty:
             row = {
@@ -49,26 +58,40 @@ def resolve_usaspending_parents(company_input: Path, entity_master_path: Path) -
                 "ultimate_parent_name": "",
                 "ultimate_parent_uei": "",
             }
-            key = (row["original_company_name"], row["ultimate_parent_name"], row["ultimate_parent_uei"])
+            key = (
+                row["original_company_name"],
+                row["ultimate_parent_name"],
+                row["ultimate_parent_uei"],
+            )
             if key not in seen:
                 parents.append(row)
                 seen.add(key)
             continue
 
-        for _, match in matches[["original_company_name", "ultimate_parent_name", "ultimate_parent_uei"]].drop_duplicates().iterrows():
+        for _, match in (
+            matches[["original_company_name", "ultimate_parent_name", "ultimate_parent_uei"]]
+            .drop_duplicates()
+            .iterrows()
+        ):
             row = {
                 "original_company_name": clean_text(match.get("original_company_name")),
                 "ultimate_parent_name": clean_text(match.get("ultimate_parent_name")),
                 "ultimate_parent_uei": clean_text(match.get("ultimate_parent_uei")),
             }
-            key = (row["original_company_name"], row["ultimate_parent_name"], row["ultimate_parent_uei"])
+            key = (
+                row["original_company_name"],
+                row["ultimate_parent_name"],
+                row["ultimate_parent_uei"],
+            )
             if key not in seen:
                 parents.append(row)
                 seen.add(key)
 
     return parents
 
+
 def best_sec_match(target_name: str, sec_rows: list[dict[str, str]]) -> dict[str, Any]:
+    """Return the highest-scoring SEC name candidate for an input name."""
     target_name = clean_text(target_name)
     best: dict[str, Any] = {
         "sec_company_name": "",
@@ -86,9 +109,9 @@ def best_sec_match(target_name: str, sec_rows: list[dict[str, str]]) -> dict[str
             method = "fuzzy_name"
             if normalize_name(target_name) == normalize_name(sec_row["sec_company_name"]):
                 method = "exact_normalized_name"
-            elif normalize_name(target_name) in normalize_name(sec_row["sec_company_name"]) or normalize_name(
+            elif normalize_name(target_name) in normalize_name(
                 sec_row["sec_company_name"]
-            ) in normalize_name(target_name):
+            ) or normalize_name(sec_row["sec_company_name"]) in normalize_name(target_name):
                 method = "contains_normalized_name"
 
             best = {
@@ -101,9 +124,11 @@ def best_sec_match(target_name: str, sec_rows: list[dict[str, str]]) -> dict[str
 
     return best
 
+
 def build_crosswalk_candidates(
     client: SecClient, company_input: Path, entity_master_path: Path, output_path: Path
 ) -> list[dict[str, Any]]:
+    """Build and write SEC crosswalk candidates for input companies."""
     parents = resolve_usaspending_parents(company_input, entity_master_path)
     sec_rows = load_sec_ticker_map(client)
     output_rows: list[dict[str, Any]] = []

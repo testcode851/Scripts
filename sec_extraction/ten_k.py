@@ -1,3 +1,5 @@
+"""Locate, download, and extract readable sections from SEC 10-K filings."""
+
 from __future__ import annotations
 
 import html
@@ -6,6 +8,7 @@ from html.parser import HTMLParser
 from typing import Any
 
 from .schemas import BASE_ARCHIVES_URL
+
 
 class TextExtractor(HTMLParser):
     """Small stdlib HTML-to-text helper for review-grade section extraction."""
@@ -32,25 +35,38 @@ class TextExtractor(HTMLParser):
             self.parts.append(data)
 
     def text(self) -> str:
+        """Return normalized plain text collected from parsed HTML."""
         text = html.unescape(" ".join(self.parts))
         text = re.sub(r"[ \t\r\f\v]+", " ", text)
         text = re.sub(r"\n\s+", "\n", text)
         text = re.sub(r"\n{3,}", "\n\n", text)
         return text.strip()
 
+
 def ten_k_filings(filing_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Filter and sort filing rows to 10-K filings."""
     rows = [row for row in filing_rows if row.get("form") == "10-K"]
-    return sorted(rows, key=lambda row: (row.get("filingDate", ""), row.get("accessionNumber", "")), reverse=True)
+    return sorted(
+        rows,
+        key=lambda row: (row.get("filingDate", ""), row.get("accessionNumber", "")),
+        reverse=True,
+    )
+
 
 def archive_base_url(cik: str, accession_number: str) -> str:
+    """Build the SEC archive directory URL for a filing."""
     cik_no_zeros = str(int(cik))
     accession_no_dashes = accession_number.replace("-", "")
     return f"{BASE_ARCHIVES_URL}/{cik_no_zeros}/{accession_no_dashes}"
 
+
 def filing_document_url(cik: str, accession_number: str, document_name: str) -> str:
+    """Build the SEC archive URL for one filing document."""
     return f"{archive_base_url(cik, accession_number)}/{document_name}"
 
+
 def add_10k_urls(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add SEC archive and document URLs to 10-K rows."""
     enriched: list[dict[str, Any]] = []
     for row in rows:
         accession = row.get("accessionNumber", "")
@@ -59,16 +75,24 @@ def add_10k_urls(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
         copy = dict(row)
         copy["archive_base_url"] = archive_base_url(cik, accession) if accession and cik else ""
         copy["primary_document_url"] = (
-            filing_document_url(cik, accession, primary_document) if accession and cik and primary_document else ""
+            filing_document_url(cik, accession, primary_document)
+            if accession and cik and primary_document
+            else ""
         )
         copy["complete_submission_text_url"] = (
             filing_document_url(cik, accession, f"{accession}.txt") if accession and cik else ""
         )
-        copy["filing_index_json_url"] = f"{copy['archive_base_url']}/index.json" if copy["archive_base_url"] else ""
+        copy["filing_index_json_url"] = (
+            f"{copy['archive_base_url']}/index.json" if copy["archive_base_url"] else ""
+        )
         enriched.append(copy)
     return enriched
 
-def extract_filing_documents(index_json: dict[str, Any], filing: dict[str, Any]) -> list[dict[str, Any]]:
+
+def extract_filing_documents(
+    index_json: dict[str, Any], filing: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """Select filing document metadata from an SEC filing index."""
     items = index_json.get("directory", {}).get("item", [])
     rows: list[dict[str, Any]] = []
     for item in items:
@@ -89,12 +113,16 @@ def extract_filing_documents(index_json: dict[str, Any], filing: dict[str, Any])
         )
     return rows
 
+
 def html_to_text(markup: str) -> str:
+    """Convert filing HTML into normalized plain text."""
     parser = TextExtractor()
     parser.feed(markup)
     return parser.text()
 
+
 def extract_10k_sections(text: str) -> list[dict[str, str]]:
+    """Extract item sections and previews from 10-K text."""
     item_pattern = re.compile(
         r"(?im)^\s*item\s+"
         r"(1A|1B|1C|1|2|3|4|5|6|7A|7|8|9A|9B|9C|9|10|11|12|13|14|15|16)"

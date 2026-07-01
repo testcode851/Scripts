@@ -1,14 +1,19 @@
+"""Coordinate SEC downloads, transformations, and batch output generation."""
+
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import requests
 
 from .schemas import (
     ANNUAL_FINANCIAL_FIELDNAMES,
     AWARD_SEC_SUMMARY_FIELDNAMES,
     BASE_DATA_URL,
+    BATCH_SUMMARY_FIELDNAMES,
     CROSSWALK_FIELDNAMES,
     EXTRACT_FIELDNAMES,
     PROFILE_FIELDNAMES,
@@ -40,6 +45,7 @@ from .xbrl import (
     xbrl_to_extract_rows,
 )
 
+
 def extract_company(
     client: SecClient,
     company: CompanyIdentifier,
@@ -47,8 +53,11 @@ def extract_company(
     include_all_10k: bool = False,
     save_raw_json: bool = False,
     save_full_extract: bool = False,
-    crosswalk_context: dict[str, Any] | None = None,
+    company_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Download and transform SEC records for one company."""
+    # This coordinator intentionally retains its explicit options and local result sets.
+    # pylint: disable=too-many-arguments,too-many-positional-arguments,too-many-locals
     ensure_output_dir(output_dir)
 
     submissions = client.get_json(f"{BASE_DATA_URL}/submissions/CIK{company.cik}.json")
@@ -93,7 +102,9 @@ def extract_company(
             markup = client.get_text(primary_url)
             (filing_dir / primary_document).write_text(markup, encoding="utf-8", errors="replace")
             text = html_to_text(markup)
-            (filing_dir / "primary_document_text.txt").write_text(text, encoding="utf-8", errors="replace")
+            (filing_dir / "primary_document_text.txt").write_text(
+                text, encoding="utf-8", errors="replace"
+            )
 
             sections = extract_10k_sections(text)
             section_rows.extend(sections)
@@ -101,8 +112,8 @@ def extract_company(
             section_extract_rows.extend(current_section_rows)
             extract_rows.extend(current_section_rows)
 
-    add_crosswalk_context(extract_rows, crosswalk_context)
-    add_crosswalk_context(section_extract_rows, crosswalk_context)
+    add_crosswalk_context(extract_rows, company_context)
+    add_crosswalk_context(section_extract_rows, company_context)
     if save_full_extract:
         write_csv(output_dir / "sec_company_extract.csv", extract_rows, EXTRACT_FIELDNAMES)
 
@@ -119,17 +130,31 @@ def extract_company(
         "output_dir": str(output_dir),
     }
 
-def build_award_sec_summary_rows(annual_rows: list[dict[str, Any]], award_fact_path: Path) -> list[dict[str, Any]]:
+
+def build_award_sec_summary_rows(
+    annual_rows: list[dict[str, Any]], award_fact_path: Path
+) -> list[dict[str, Any]]:
+    """Join annual SEC financial rows to aggregated USAspending awards."""
+    # The local names mirror output columns and aggregation stages.
+    # pylint: disable=too-many-locals
     if not award_fact_path.exists() or not annual_rows:
         return []
 
     awards_df = read_table(award_fact_path)
-    required = {"ultimate_parent_uei", "award_id", "recipient_uei", "award_amount", "awarding_agency"}
+    required = {
+        "ultimate_parent_uei",
+        "award_id",
+        "recipient_uei",
+        "award_amount",
+        "awarding_agency",
+    }
     missing = required.difference(awards_df.columns)
     if missing:
         raise ValueError(f"{award_fact_path} is missing columns: {sorted(missing)}")
 
-    awards_df["award_amount_numeric"] = pd.to_numeric(awards_df["award_amount"], errors="coerce").fillna(0)
+    awards_df["award_amount_numeric"] = pd.to_numeric(
+        awards_df["award_amount"], errors="coerce"
+    ).fillna(0)
     grouped = (
         awards_df.groupby("ultimate_parent_uei", dropna=False)
         .agg(
@@ -188,7 +213,9 @@ def build_award_sec_summary_rows(annual_rows: list[dict[str, Any]], award_fact_p
 
     return summary_rows
 
+
 def crosswalk_context(row: dict[str, Any]) -> dict[str, Any]:
+    """Select reviewed crosswalk metadata propagated to output rows."""
     return {
         "original_company_name": clean_text(row.get("original_company_name")),
         "ultimate_parent_name": clean_text(row.get("ultimate_parent_name")),
@@ -199,7 +226,11 @@ def crosswalk_context(row: dict[str, Any]) -> dict[str, Any]:
         "review_notes": clean_text(row.get("review_notes")),
     }
 
+
 def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
+    """Extract SEC data for every approved row in a reviewed crosswalk."""
+    # Batch accumulators are kept separate to make each output table explicit.
+    # pylint: disable=too-many-locals
     crosswalk_path = Path(args.crosswalk)
     crosswalk_df = read_table(crosswalk_path)
     missing = set(CROSSWALK_FIELDNAMES).difference(crosswalk_df.columns)
@@ -238,7 +269,7 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
                 include_all_10k=args.include_all_10k,
                 save_raw_json=args.save_raw_json,
                 save_full_extract=args.save_full_sec_extract,
-                crosswalk_context=context,
+                company_context=context,
             )
             combined_extract_rows.extend(result["extract_rows"])
             profile_rows.append(build_profile_readable_row(result["profile"], context))
@@ -247,7 +278,9 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
                     result["xbrl_rows"], result["profile"], context, max_years=args.financial_years
                 )
             )
-            ten_k_section_rows.extend(build_10k_section_readable_rows(result["section_extract_rows"]))
+            ten_k_section_rows.extend(
+                build_10k_section_readable_rows(result["section_extract_rows"])
+            )
             summary_rows.append(
                 {
                     **context,
@@ -261,8 +294,10 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
                     "error": "",
                 }
             )
-            print(f"Extracted {company.ticker or company.cik}: {result['xbrl_fact_count']:,} XBRL facts")
-        except Exception as exc:
+            company_label = company.ticker or company.cik
+            fact_count = result["xbrl_fact_count"]
+            print(f"Extracted {company_label}: {fact_count:,} XBRL facts")
+        except (KeyError, OSError, ValueError, requests.RequestException) as exc:
             summary_rows.append(
                 {
                     **context,
@@ -279,11 +314,25 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
             print(f"Failed {label}: {exc}")
 
     if args.save_full_sec_extract:
-        write_csv(base_output_dir / "sec_company_extract.csv", combined_extract_rows, EXTRACT_FIELDNAMES)
-    write_csv(base_output_dir / "sec_company_profile_readable.csv", profile_rows, PROFILE_FIELDNAMES)
-    write_csv(base_output_dir / "sec_company_financials_annual_readable.csv", annual_rows, ANNUAL_FINANCIAL_FIELDNAMES)
-    write_csv(base_output_dir / "sec_10k_sections_readable.csv", ten_k_section_rows, SEC_10K_SECTION_FIELDNAMES)
-    award_sec_summary_rows = build_award_sec_summary_rows(annual_rows, Path(args.award_fact_readable))
+        write_csv(
+            base_output_dir / "sec_company_extract.csv", combined_extract_rows, EXTRACT_FIELDNAMES
+        )
+    write_csv(
+        base_output_dir / "sec_company_profile_readable.csv", profile_rows, PROFILE_FIELDNAMES
+    )
+    write_csv(
+        base_output_dir / "sec_company_financials_annual_readable.csv",
+        annual_rows,
+        ANNUAL_FINANCIAL_FIELDNAMES,
+    )
+    write_csv(
+        base_output_dir / "sec_10k_sections_readable.csv",
+        ten_k_section_rows,
+        SEC_10K_SECTION_FIELDNAMES,
+    )
+    award_sec_summary_rows = build_award_sec_summary_rows(
+        annual_rows, Path(args.award_fact_readable)
+    )
     write_csv(
         base_output_dir / "company_award_sec_summary_readable.csv",
         award_sec_summary_rows,
@@ -292,19 +341,7 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
     write_csv(
         base_output_dir / "sec_extraction_batch_summary.csv",
         summary_rows,
-        [
-            "original_company_name",
-            "ultimate_parent_name",
-            "ultimate_parent_uei",
-            "ticker",
-            "cik",
-            "sec_company_name",
-            "status",
-            "output_dir",
-            "xbrl_fact_count",
-            "ten_k_section_count",
-            "error",
-        ],
+        BATCH_SUMMARY_FIELDNAMES,
     )
 
     print(f"Approved crosswalk rows processed: {len(rows):,}")

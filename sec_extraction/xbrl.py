@@ -1,11 +1,22 @@
+"""Transform SEC submissions and XBRL facts into readable output rows."""
+
 from __future__ import annotations
 
 from typing import Any
 
-from .schemas import ANNUAL_FINANCIAL_FIELDNAMES, DEFAULT_FINANCIAL_YEARS, HIGH_VALUE_10K_ITEMS, SEC_FINANCIAL_TAG_MAP
+from .schemas import (
+    ANNUAL_FINANCIAL_FIELDNAMES,
+    DEFAULT_FINANCIAL_YEARS,
+    HIGH_VALUE_10K_ITEMS,
+    SEC_FINANCIAL_TAG_MAP,
+)
 from .sec_client import CompanyIdentifier, clean_text
 
-def extract_company_profile(submissions: dict[str, Any], company: CompanyIdentifier) -> dict[str, Any]:
+
+def extract_company_profile(
+    submissions: dict[str, Any], company: CompanyIdentifier
+) -> dict[str, Any]:
+    """Build a normalized company profile from SEC submissions data."""
     addresses = submissions.get("addresses") or {}
     business_address = addresses.get("business") or {}
     mailing_address = addresses.get("mailing") or {}
@@ -18,8 +29,12 @@ def extract_company_profile(submissions: dict[str, Any], company: CompanyIdentif
         "sic": submissions.get("sic", ""),
         "sic_description": submissions.get("sicDescription", ""),
         "owner_org": submissions.get("ownerOrg", ""),
-        "insider_transaction_for_owner_exists": submissions.get("insiderTransactionForOwnerExists", ""),
-        "insider_transaction_for_issuer_exists": submissions.get("insiderTransactionForIssuerExists", ""),
+        "insider_transaction_for_owner_exists": submissions.get(
+            "insiderTransactionForOwnerExists", ""
+        ),
+        "insider_transaction_for_issuer_exists": submissions.get(
+            "insiderTransactionForIssuerExists", ""
+        ),
         "ein": submissions.get("ein", ""),
         "description": submissions.get("description", ""),
         "website": submissions.get("website", ""),
@@ -27,7 +42,9 @@ def extract_company_profile(submissions: dict[str, Any], company: CompanyIdentif
         "category": submissions.get("category", ""),
         "fiscal_year_end": submissions.get("fiscalYearEnd", ""),
         "state_of_incorporation": submissions.get("stateOfIncorporation", ""),
-        "state_of_incorporation_description": submissions.get("stateOfIncorporationDescription", ""),
+        "state_of_incorporation_description": submissions.get(
+            "stateOfIncorporationDescription", ""
+        ),
         "phone": submissions.get("phone", ""),
         "flags": submissions.get("flags", ""),
         "tickers": "|".join(submissions.get("tickers") or []),
@@ -44,7 +61,11 @@ def extract_company_profile(submissions: dict[str, Any], company: CompanyIdentif
         "mailing_zip_code": mailing_address.get("zipCode", ""),
     }
 
-def flatten_recent_filings(submissions: dict[str, Any], company: CompanyIdentifier) -> list[dict[str, Any]]:
+
+def flatten_recent_filings(
+    submissions: dict[str, Any], company: CompanyIdentifier
+) -> list[dict[str, Any]]:
+    """Flatten parallel recent-filing arrays into row dictionaries."""
     recent = submissions.get("filings", {}).get("recent", {})
     if not recent:
         return []
@@ -62,7 +83,11 @@ def flatten_recent_filings(submissions: dict[str, Any], company: CompanyIdentifi
 
     return rows
 
-def flatten_xbrl_facts(companyfacts: dict[str, Any], company: CompanyIdentifier) -> list[dict[str, Any]]:
+
+def flatten_xbrl_facts(
+    companyfacts: dict[str, Any], company: CompanyIdentifier
+) -> list[dict[str, Any]]:
+    """Flatten SEC company facts into individual XBRL observations."""
     rows: list[dict[str, Any]] = []
     facts = companyfacts.get("facts", {})
 
@@ -112,7 +137,9 @@ def flatten_xbrl_facts(companyfacts: dict[str, Any], company: CompanyIdentifier)
 
     return rows
 
+
 def profile_to_extract_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
+    """Convert profile fields into broad audit-extract rows."""
     rows: list[dict[str, Any]] = []
     for field_name, field_value in profile.items():
         if field_name in {"ticker", "cik", "company_name"}:
@@ -144,7 +171,9 @@ def profile_to_extract_rows(profile: dict[str, Any]) -> list[dict[str, Any]]:
         )
     return rows
 
+
 def xbrl_to_extract_rows(xbrl_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert flattened XBRL facts into broad audit-extract rows."""
     rows: list[dict[str, Any]] = []
     for row in xbrl_rows:
         rows.append(
@@ -174,9 +203,11 @@ def xbrl_to_extract_rows(xbrl_rows: list[dict[str, Any]]) -> list[dict[str, Any]
         )
     return rows
 
+
 def section_to_extract_rows(
     sections: list[dict[str, str]], company: CompanyIdentifier, filing: dict[str, Any]
 ) -> list[dict[str, Any]]:
+    """Convert 10-K sections into broad audit-extract rows."""
     rows: list[dict[str, Any]] = []
     for section in sections:
         rows.append(
@@ -206,15 +237,29 @@ def section_to_extract_rows(
         )
     return rows
 
-def add_crosswalk_context(rows: list[dict[str, Any]], context: dict[str, Any] | None) -> list[dict[str, Any]]:
+
+def add_crosswalk_context(
+    rows: list[dict[str, Any]], context: dict[str, Any] | None
+) -> list[dict[str, Any]]:
+    """Add reviewed crosswalk fields to rows in place."""
     context = context or {}
     for row in rows:
-        row["original_company_name"] = context.get("original_company_name", row.get("original_company_name", ""))
-        row["ultimate_parent_name"] = context.get("ultimate_parent_name", row.get("ultimate_parent_name", ""))
-        row["ultimate_parent_uei"] = context.get("ultimate_parent_uei", row.get("ultimate_parent_uei", ""))
+        row["original_company_name"] = context.get(
+            "original_company_name", row.get("original_company_name", "")
+        )
+        row["ultimate_parent_name"] = context.get(
+            "ultimate_parent_name", row.get("ultimate_parent_name", "")
+        )
+        row["ultimate_parent_uei"] = context.get(
+            "ultimate_parent_uei", row.get("ultimate_parent_uei", "")
+        )
     return rows
 
-def build_profile_readable_row(profile: dict[str, Any], context: dict[str, Any] | None = None) -> dict[str, Any]:
+
+def build_profile_readable_row(
+    profile: dict[str, Any], context: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """Build one curated company-profile output row."""
     context = context or {}
     return {
         "original_company_name": context.get("original_company_name", ""),
@@ -243,7 +288,9 @@ def build_profile_readable_row(profile: dict[str, Any], context: dict[str, Any] 
         "review_notes": context.get("review_notes", ""),
     }
 
+
 def to_float(value: Any) -> float | None:
+    """Convert a value to float, returning None on failure."""
     try:
         if value == "":
             return None
@@ -251,12 +298,16 @@ def to_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
 
+
 def build_annual_financial_rows(
     xbrl_rows: list[dict[str, Any]],
     profile: dict[str, Any],
     context: dict[str, Any] | None = None,
     max_years: int = DEFAULT_FINANCIAL_YEARS,
 ) -> list[dict[str, Any]]:
+    """Select and pivot recent annual XBRL facts into readable rows."""
+    # Branches and locals represent distinct SEC fact-selection rules and output metrics.
+    # pylint: disable=too-many-branches,too-many-locals
     context = context or {}
     annual_forms = {"10-K", "20-F", "40-F"}
     grouped: dict[tuple[str, str], list[dict[str, Any]]] = {}
@@ -320,8 +371,12 @@ def build_annual_financial_rows(
             year_row.get("revenue_from_contract", ""),
             year_row.get("sales_revenue_net", ""),
         ]
-        year_row["reported_revenue"] = next((value for value in revenue_values if clean_text(value)), "")
-        year_row["reported_source_tags"] = "|".join(sorted(tag for tag in source_tags.get(fiscal_year, set()) if tag))
+        year_row["reported_revenue"] = next(
+            (value for value in revenue_values if clean_text(value)), ""
+        )
+        year_row["reported_source_tags"] = "|".join(
+            sorted(tag for tag in source_tags.get(fiscal_year, set()) if tag)
+        )
         year_row["data_quality_notes"] = "; ".join(sorted(notes.get(fiscal_year, set())))
         for fieldname in ANNUAL_FINANCIAL_FIELDNAMES:
             year_row.setdefault(fieldname, "")
@@ -333,6 +388,7 @@ def build_annual_financial_rows(
 
 
 def build_10k_section_readable_rows(section_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Select curated fields for readable 10-K section output."""
     readable_rows: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()
     for row in section_rows:

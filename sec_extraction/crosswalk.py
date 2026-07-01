@@ -11,7 +11,6 @@ from .sec_client import (
     clean_text,
     ensure_output_dir,
     load_sec_ticker_map,
-    name_similarity,
     normalize_name,
     read_table,
     write_csv,
@@ -90,39 +89,39 @@ def resolve_usaspending_parents(
     return parents
 
 
-def best_sec_match(target_name: str, sec_rows: list[dict[str, str]]) -> dict[str, Any]:
-    """Return the highest-scoring SEC name candidate for an input name."""
+def exact_sec_match(target_name: str, sec_rows: list[dict[str, str]]) -> dict[str, Any]:
+    """Return a unique normalized-name SEC match without fuzzy fallback."""
     target_name = clean_text(target_name)
-    best: dict[str, Any] = {
+    no_match: dict[str, Any] = {
         "sec_company_name": "",
         "ticker": "",
         "cik": "",
-        "match_method": "no_candidate",
+        "match_method": "no_exact_sec_match",
         "match_confidence": 0.0,
     }
     if not target_name:
-        return best
+        no_match["match_method"] = "missing_ultimate_parent_name"
+        return no_match
 
-    for sec_row in sec_rows:
-        score = name_similarity(target_name, sec_row["sec_company_name"])
-        if score > float(best["match_confidence"]):
-            method = "fuzzy_name"
-            if normalize_name(target_name) == normalize_name(sec_row["sec_company_name"]):
-                method = "exact_normalized_name"
-            elif normalize_name(target_name) in normalize_name(
-                sec_row["sec_company_name"]
-            ) or normalize_name(sec_row["sec_company_name"]) in normalize_name(target_name):
-                method = "contains_normalized_name"
+    normalized_target = normalize_name(target_name)
+    candidates = [
+        row for row in sec_rows if normalize_name(row.get("sec_company_name")) == normalized_target
+    ]
+    candidates_by_cik = {clean_text(row.get("cik")): row for row in candidates}
+    if not candidates_by_cik:
+        return no_match
+    if len(candidates_by_cik) > 1:
+        no_match["match_method"] = "ambiguous_exact_sec_match"
+        return no_match
 
-            best = {
-                "sec_company_name": sec_row["sec_company_name"],
-                "ticker": sec_row["ticker"],
-                "cik": sec_row["cik"],
-                "match_method": method,
-                "match_confidence": score,
-            }
-
-    return best
+    match = next(iter(candidates_by_cik.values()))
+    return {
+        "sec_company_name": clean_text(match.get("sec_company_name")),
+        "ticker": clean_text(match.get("ticker")),
+        "cik": clean_text(match.get("cik")),
+        "match_method": "exact_normalized_ultimate_parent_name",
+        "match_confidence": 100.0,
+    }
 
 
 def build_crosswalk_candidates(
@@ -134,26 +133,28 @@ def build_crosswalk_candidates(
     output_rows: list[dict[str, Any]] = []
 
     for parent in parents:
-        sec_match_name = parent.get("original_company_name", "")
-        match = best_sec_match(sec_match_name, sec_rows)
-        confidence = float(match["match_confidence"])
-        if confidence >= 98:
-            review_status = "approved"
-            notes = "High-confidence normalized name match; review before production use."
-        elif confidence >= 85:
-            review_status = "needs_review"
-            notes = "Likely match, but confirm public parent and ticker/CIK."
+        ultimate_parent_uei = clean_text(parent.get("ultimate_parent_uei"))
+        sec_match_name = clean_text(parent.get("ultimate_parent_name"))
+        if not ultimate_parent_uei:
+            match = exact_sec_match("", sec_rows)
+            match["match_method"] = "missing_ultimate_parent_uei"
         else:
-            review_status = "needs_review"
-            notes = "Low-confidence or missing SEC match; manually verify."
+            match = exact_sec_match(sec_match_name, sec_rows)
+
+        if match["match_method"] == "exact_normalized_ultimate_parent_name":
+            review_status = "approved"
+            notes = "Exact normalized SEC match for the USAspending ultimate parent."
+        else:
+            review_status = "no_match"
+            notes = "No unique exact SEC match for the USAspending ultimate parent."
 
         output_rows.append(
             {
                 "original_company_name": parent.get("original_company_name", ""),
                 "ultimate_parent_name": parent.get("ultimate_parent_name", ""),
-                "ultimate_parent_uei": parent.get("ultimate_parent_uei", ""),
+                "ultimate_parent_uei": ultimate_parent_uei,
                 "sec_match_name": sec_match_name,
-                "sec_match_scope": "company_names_input",
+                "sec_match_scope": "usaspending_ultimate_parent",
                 "sec_company_name": match["sec_company_name"],
                 "ticker": match["ticker"],
                 "cik": match["cik"],

@@ -45,3 +45,13 @@ id_ed25519*
 *.pem
 *.key
 *PRIVATE KEY*
+
+# Generated workflow outputs
+output/
+bulk_award_download_pipeline/
+refactored_usaspending/
+*.csv
+*.xlsx
+.usaspending_state.json
+*.log
+!logs/.gitkeep

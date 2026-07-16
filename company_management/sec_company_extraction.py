@@ -1,20 +1,26 @@
-"""Command-line entry point for SEC extraction and USAspending crosswalk workflows."""
+﻿"""Command-line entry point for SEC extraction and USAspending crosswalk workflows."""
 
 from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
-from sec_extraction.crosswalk import build_crosswalk_candidates
-from sec_extraction.pipeline import (
+# Allow this documented entry point to run directly from the repository root.
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.sec_extraction.crosswalk import build_crosswalk_candidates
+from src.sec_extraction.pipeline import (
     build_annual_financial_rows,
     build_10k_section_readable_rows,
     build_profile_readable_row,
     extract_company,
     run_crosswalk_batch,
 )
-from sec_extraction.schemas import (
+from src.sec_extraction.schemas import (
     ANNUAL_FINANCIAL_FIELDNAMES,
     APPROVED_REVIEW_STATUS,
     DEFAULT_FINANCIAL_YEARS,
@@ -23,7 +29,7 @@ from sec_extraction.schemas import (
     PROFILE_FIELDNAMES,
     SEC_10K_SECTION_FIELDNAMES,
 )
-from sec_extraction.sec_client import SecClient, resolve_company, write_csv
+from src.sec_extraction.sec_client import SecClient, resolve_company, write_csv
 
 
 def build_cli_parser() -> argparse.ArgumentParser:
@@ -32,11 +38,11 @@ def build_cli_parser() -> argparse.ArgumentParser:
         description="SEC extraction and USAspending crosswalk helper",
         epilog=(
             "Common examples:\n"
-            "  python sec_company_extraction.py --step all\n"
-            "  python sec_company_extraction.py --step crosswalk\n"
-            "  python sec_company_extraction.py --step extract\n"
-            "  python sec_company_extraction.py --step single --ticker MMM\n"
-            "  python sec_company_extraction.py --help"
+            "  python company_management/sec_company_extraction.py --step all\n"
+            "  python company_management/sec_company_extraction.py --step crosswalk\n"
+            "  python company_management/sec_company_extraction.py --step extract\n"
+            "  python company_management/sec_company_extraction.py --step single --ticker MMM\n"
+            "  python company_management/sec_company_extraction.py --help"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -50,10 +56,10 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--input",
-        default="CompanyNames.xlsx",
+        default="config/CompanyNames.xlsx",
         help=(
             "Path to company names Excel/CSV file for SEC crosswalk generation. "
-            "Default: CompanyNames.xlsx."
+            "Default: config/CompanyNames.xlsx."
         ),
     )
     parser.add_argument("--ticker", help="Ticker symbol for --step single, such as MMM or AAPL.")
@@ -68,13 +74,15 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--entity-master",
-        default="entity_master.csv",
+        default=str(Path("output") / "usaspending" / "entity_master.csv"),
         help="USAspending entity_master.csv used when building crosswalk candidates.",
     )
     parser.add_argument(
         "--crosswalk-output",
-        default="company_sec_crosswalk_candidates.csv",
-        help="Output path for generated crosswalk candidates.",
+        help=(
+            "Output path for generated crosswalk candidates. Defaults to "
+            "OUTPUT_DIR/company_sec_crosswalk_candidates.csv."
+        ),
     )
     parser.add_argument(
         "--output-dir",
@@ -123,11 +131,16 @@ def build_cli_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--award-fact-readable",
-        default=str(Path("output") / "powerbi_prototype" / "award_fact_readable.csv"),
+        default=str(Path("output") / "powerbi" / "award_fact_readable.csv"),
         help=(
             "Readable USAspending award file used to create "
             "company_award_sec_summary_readable.csv."
         ),
+    )
+    parser.add_argument(
+        "--powerbi-output-dir",
+        default=str(Path("output") / "powerbi"),
+        help="Directory for reporting-ready files that combine SEC and USAspending data.",
     )
     return parser
 
@@ -137,6 +150,7 @@ def run(args: argparse.Namespace) -> None:
     client = SecClient(args.user_agent)
     output_dir = Path(args.output_dir)
     default_crosswalk = output_dir / "company_sec_crosswalk_candidates.csv"
+    crosswalk_output = Path(args.crosswalk_output) if args.crosswalk_output else default_crosswalk
 
     step = args.step
     if step is None:
@@ -147,9 +161,9 @@ def run(args: argparse.Namespace) -> None:
             client,
             Path(args.input),
             Path(args.entity_master),
-            default_crosswalk,
+            crosswalk_output,
         )
-        print(f"Crosswalk candidates written: {default_crosswalk}")
+        print(f"Crosswalk candidates written: {crosswalk_output}")
         print(f"Candidate rows: {len(rows):,}")
         print("Review the file, then run --step extract if you do not want to run --step all.")
         return
@@ -164,11 +178,11 @@ def run(args: argparse.Namespace) -> None:
             client,
             Path(args.input),
             Path(args.entity_master),
-            default_crosswalk,
+            crosswalk_output,
         )
-        print(f"Crosswalk candidates written: {default_crosswalk}")
+        print(f"Crosswalk candidates written: {crosswalk_output}")
         print(f"Candidate rows: {len(rows):,}")
-        args.crosswalk = str(default_crosswalk)
+        args.crosswalk = str(crosswalk_output)
         run_crosswalk_batch(client, args)
         return
 
@@ -228,3 +242,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

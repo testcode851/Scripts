@@ -439,8 +439,10 @@ def run_crosswalk_batch(client: SecClient, args: argparse.Namespace) -> None:
     award_sec_summary_rows = build_award_sec_summary_rows(
         annual_rows, Path(args.award_fact_readable)
     )
+    powerbi_output_dir = Path(args.powerbi_output_dir)
+    ensure_output_dir(powerbi_output_dir)
     write_csv(
-        base_output_dir / "company_award_sec_summary_readable.csv",
+        powerbi_output_dir / "company_award_sec_summary_readable.csv",
         award_sec_summary_rows,
         AWARD_SEC_SUMMARY_FIELDNAMES,
     )

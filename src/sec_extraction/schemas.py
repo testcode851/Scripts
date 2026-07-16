@@ -7,7 +7,7 @@ from pathlib import Path
 BASE_DATA_URL = "https://data.sec.gov"
 BASE_ARCHIVES_URL = "https://www.sec.gov/Archives/edgar/data"
 SEC_CIK_LOOKUP_URL = "https://www.sec.gov/Archives/edgar/cik-lookup-data.txt"
-DEFAULT_OUTPUT_DIR = Path("output") / "sec_company_extraction"
+DEFAULT_OUTPUT_DIR = Path("output") / "sec"
 DEFAULT_USER_AGENT = "KCNSC (aarango@kcnsc.doe.com)"
 REQUEST_DELAY_SECONDS = 0.2
 TIMEOUT_SECONDS = 30

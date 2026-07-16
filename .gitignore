@@ -55,3 +55,5 @@ refactored_usaspending/
 .usaspending_state.json
 *.log
 !logs/.gitkeep
+
+docs/*.md

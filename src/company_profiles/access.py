@@ -28,6 +28,8 @@ def read_database_config() -> tuple[str, str]:
 def _value(value: Any) -> Any:
     if value is None or pd.isna(value):
         return None
+    if isinstance(value, str) and not value.strip():
+        return None
     if isinstance(value, pd.Timestamp):
         return value.to_pydatetime()
     if isinstance(value, (datetime, date, str, int, float, bool)):

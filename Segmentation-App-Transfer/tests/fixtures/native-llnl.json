@@ -1,0 +1,29 @@
+{
+  "version": "1.0",
+  "imagePath": "fixture.png",
+  "imageWidth": 100,
+  "imageHeight": 80,
+  "displaySize": { "width": 500, "height": 400 },
+  "annotationTiming": { "durationMs": 1000 },
+  "shapes": [
+    {
+      "label": "road",
+      "points": [[1, 2], [8, 2], [8, 9]],
+      "path_points": [[1, 2], [8, 2], [8, 9]],
+      "group_id": null,
+      "shape_type": "polygon",
+      "color": "#22c55e",
+      "curves": [],
+      "flags": {}
+    },
+    {
+      "label": "wheel",
+      "points": [[20, 30], [4, 5]],
+      "group_id": null,
+      "shape_type": "ellipse",
+      "color": "#445566",
+      "flags": {},
+      "ellipse": { "cx": 20, "cy": 30, "rx": 4, "ry": 5, "rotation": 0 }
+    }
+  ]
+}

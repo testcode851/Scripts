@@ -1080,9 +1080,17 @@ def fetch_parent_recipients(api: ApiClient, keyword: str, max_pages: int = 2) ->
 # CSV WRITING
 # =============================================================================
 
+def ensure_parent_directory(path: str) -> None:
+    """Create a file's parent directory when the configured path includes one."""
+    directory = os.path.dirname(path)
+    if directory:
+        os.makedirs(directory, exist_ok=True)
+
+
 def write_csv(df: pd.DataFrame, path: str) -> None:
     """Saves a DataFrame to a CSV file. Simple wrapper that adds logging so
     we always know what file was written and how many rows it has."""
+    ensure_parent_directory(path)
     df.to_csv(path, index=False, encoding="utf-8")
     logger.info("Wrote %d rows to %s", len(df), path)
 
@@ -2054,6 +2062,7 @@ def process_hierarchy_for_awards(
     # Thread safety: we use a lock to make sure only one thread writes to the
     # CSV file at a time. Without this, the file could get corrupted.
     csv_lock = threading.Lock()
+    ensure_parent_directory(output_csv)
     header_written = os.path.exists(output_csv) and os.path.getsize(output_csv) > 0
 
     for uei, window_start, window_end in jobs:

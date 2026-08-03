@@ -1,0 +1,214 @@
+/* ── 8. FLOATING DIALOGS ─────────────────────────────────────────────── */
+.floating-dialog {
+  position: fixed;
+  z-index: 900;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.floating-dialog-panel {
+  width: min(380px, 92vw);
+  max-height: min(80vh, 600px);
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 0;
+  box-shadow: 0 16px 48px var(--shadow-dialog);
+}
+
+.floating-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.floating-dialog-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.floating-dialog-close {
+  border: none;
+  background: none;
+  font-size: 1.3rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.floating-dialog-close:hover {
+  background: var(--border-soft);
+  color: var(--text);
+}
+
+.floating-dialog-body {
+  padding: 12px 14px;
+}
+
+.floating-dialog-body label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 0.88rem;
+  color: var(--text-heading);
+}
+
+.floating-dialog-body label:last-child {
+  margin-bottom: 0;
+}
+
+.floating-dialog-body input[type="checkbox"] {
+  margin-right: 6px;
+}
+
+.floating-dialog-body input[type="range"] {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.floating-dialog-body input[type="number"],
+.floating-dialog-body select {
+  width: 100%;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: var(--surface-white);
+}
+
+.floating-dialog-body output {
+  display: inline-block;
+  margin-top: 4px;
+  min-width: 42px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-output);
+}
+
+.dialog-actions-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* ── 9. SHORTCUTS MODAL ──────────────────────────────────────────────── */
+body.modal-open {
+  overflow: hidden;
+}
+
+.shortcuts-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--modal-overlay);
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.shortcuts-modal-panel {
+  width: min(720px, 96vw);
+  max-height: min(86vh, 760px);
+  overflow-y: scroll;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 24px 60px var(--shadow-modal);
+}
+
+.shortcuts-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.shortcuts-modal-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.shortcuts-close {
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.shortcuts-note {
+  margin: 10px 0 12px;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.confirm-modal-panel {
+  width: min(440px, 94vw);
+  overflow-y: auto;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.primary-action,
+.secondary-action {
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.primary-action {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--surface-white);
+}
+
+.secondary-action {
+  background: var(--surface-white);
+  color: var(--text);
+}
+
+.shortcuts-modal-panel .tips-group {
+  margin-top: 8px;
+}
+
+.shortcuts-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.shortcuts-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--surface-subtle);
+}
+
+.shortcuts-list kbd {
+  display: inline-block;
+  border: 1px solid var(--border-key);
+  border-bottom-width: 2px;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  font-family: Consolas, "Courier New", monospace;
+  background: var(--surface-white);
+}

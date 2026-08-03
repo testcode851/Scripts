@@ -1,0 +1,40 @@
+/* ── 2. RESET / BASE ─────────────────────────────────────────────────── */
+* {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  background: var(--surface);
+  cursor: pointer;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+button:hover {
+  border-color: var(--border-hover);
+  color: var(--button-hover-text);
+  background: var(--button-hover-bg);
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+canvas:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}

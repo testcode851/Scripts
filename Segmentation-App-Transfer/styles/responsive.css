@@ -1,0 +1,126 @@
+/* ── 10. RESPONSIVE RULES ────────────────────────────────────────────── */
+@media (max-width: 1300px) {
+  .workspace {
+    grid-template-columns: 56px minmax(0, 1fr);
+  }
+
+  .tips-panel {
+    grid-column: 1 / -1;
+  }
+
+  #labelListUnique {
+    height: 140px;
+  }
+
+  #polygonLabelList {
+    height: 240px;
+  }
+}
+
+@media (min-width: 1301px) {
+  body {
+    height: 100vh;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .workspace {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+    align-items: stretch;
+  }
+
+  .tips-panel,
+  .canvas-wrap {
+    min-height: 0;
+  }
+
+  .tips-panel {
+    position: relative;
+    top: auto;
+    height: 100%;
+    max-height: none;
+  }
+
+  .canvas-wrap {
+    height: 100%;
+    align-items: center;
+  }
+}
+
+@media (max-width: 960px) {
+  body {
+    display: block;
+    height: auto;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .tool-strip {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .tool-strip-divider {
+    width: 1px;
+    height: 28px;
+    margin: 0 4px;
+  }
+
+  .tips-panel {
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .canvas-wrap {
+    min-height: 58vh;
+  }
+
+  #labelListUnique,
+  #polygonLabelList {
+    height: 180px;
+  }
+}
+
+/* Square corners across the UI (no rounded borders). */
+button,
+.toolbar-btn,
+.toolbar-zoom-btn,
+.format-select,
+.format-select select,
+.tool-strip,
+.tool-strip-btn,
+.canvas-wrap,
+.canvas-label-editor,
+.canvas-label-editor input,
+.canvas-label-editor-suggestions,
+.canvas-label-editor-suggestion,
+.canvas-context-menu,
+.canvas-context-menu-item,
+.tips-panel,
+.image-meta,
+.label-panel,
+.label-list,
+.image-load-progress,
+.tips-group,
+.floating-dialog-panel,
+.floating-dialog-close,
+.floating-dialog-body input[type="number"],
+.floating-dialog-body select,
+.shortcuts-modal-panel,
+.shortcuts-list li,
+.shortcuts-list kbd {
+  border-radius: 0 !important;
+}

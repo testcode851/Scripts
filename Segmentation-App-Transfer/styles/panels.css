@@ -1,0 +1,359 @@
+/* ── 7. RIGHT TIPS PANEL ─────────────────────────────────────────────── */
+.tips-panel {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 8px;
+  align-self: start;
+  position: sticky;
+  top: 10px;
+  max-height: calc(100vh - 20px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tips-panel.tips-panel--scrollable {
+  overflow-y: auto;
+}
+
+.tips-panel h2 {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+  color: var(--text-heading-strong);
+  font-weight: 600;
+}
+
+.tips-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tips-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tips-header h2 {
+  margin-bottom: 0;
+}
+
+.tips-toggle {
+  padding: 5px 8px;
+  font-size: 0.8rem;
+}
+
+.image-meta {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--surface-subtle);
+}
+
+.image-meta h3 {
+  margin: 0;
+  padding: 5px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  background: var(--surface-strong);
+  border-bottom: 1px solid var(--border);
+}
+
+.image-meta-list {
+  margin: 0;
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.image-meta-list div {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+}
+
+.image-meta-list dt {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.image-meta-list dd {
+  margin: 0;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.image-meta-list .annotation-timer-row {
+  align-items: start;
+}
+
+.image-meta-list .annotation-timer {
+  display: grid;
+  grid-template-columns: none;
+  justify-items: end;
+  gap: 5px;
+}
+
+.image-meta-list .annotation-timer output {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.image-meta-list .annotation-timer-controls {
+  display: flex;
+  grid-template-columns: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.annotation-timer-button {
+  padding: 3px 7px;
+  border-radius: 6px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+}
+
+.annotation-timer-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.image-load-status {
+  margin-top: 0;
+  padding: 8px;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 6px;
+}
+
+.image-load-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.image-load-progress {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--surface-progress-track);
+}
+
+.image-load-progress-fill {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--progress-start) 0%,
+    var(--progress-end) 100%
+  );
+  transition: width 120ms ease;
+}
+
+.image-load-status[data-state="success"] .image-load-progress-fill {
+  background: var(--status-success);
+}
+
+.image-load-status[data-state="error"] .image-load-progress-fill {
+  background: var(--status-error);
+}
+
+.label-panel {
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 0;
+  background: var(--surface-subtle);
+  display: grid;
+  gap: 0;
+  min-height: 0;
+}
+
+.label-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  background: var(--surface-strong);
+  border-bottom: 1px solid var(--border);
+}
+
+.label-panel-header h3 {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-heading);
+}
+
+.label-count {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.label-panel-action {
+  padding: 4px 8px;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  background: var(--surface-action);
+}
+
+.shape-color-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.shape-color-picker input {
+  width: 28px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-white);
+  cursor: pointer;
+}
+
+.shape-color-picker input:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.label-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: var(--surface-white);
+  overflow-y: auto;
+}
+
+.label-list--unique {
+  height: 120px;
+}
+
+.label-list--polygons {
+  height: 220px;
+}
+
+.label-list-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--border-faint);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.75rem;
+  text-align: left;
+  padding: 7px 8px;
+}
+
+.label-list-item:last-child {
+  border-bottom: 0;
+}
+
+.label-list-item--unique {
+  cursor: default;
+}
+
+.label-list-item--polygon {
+  cursor: pointer;
+}
+
+.label-list-item--polygon:hover {
+  background: var(--surface-selection);
+}
+
+.label-list-item--polygon.is-selected {
+  background: var(--primary);
+  color: var(--surface-white);
+  font-weight: 500;
+}
+
+.label-list-item-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.label-list-item-swatch {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  border: 1px solid var(--swatch-border);
+}
+
+.label-list-item-meta {
+  flex-shrink: 0;
+  color: var(--text-subtle);
+  font-size: 0.72rem;
+}
+
+.label-list-item--polygon.is-selected .label-list-item-meta {
+  color: var(--selected-text-subtle);
+}
+
+.label-list-item--polygon.is-selected .label-list-item-swatch {
+  border-color: var(--swatch-border-selected);
+}
+
+.tips-panel ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text);
+}
+
+.tips-panel li {
+  margin-bottom: 8px;
+}
+
+.tips-panel .label-list {
+  padding-left: 0;
+  color: var(--text);
+}
+
+.tips-panel .label-list li {
+  margin-bottom: 0;
+}
+
+.tips-group {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+}
+
+.tips-group summary {
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  padding: 10px;
+}
+
+.tips-group ul {
+  border-top: 1px solid var(--border);
+  padding: 10px 10px 10px 28px;
+}

@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Segmentation Annotator</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/base.css" />
+    <link rel="stylesheet" href="styles/toolbar.css" />
+    <link rel="stylesheet" href="styles/layout.css" />
+    <link rel="stylesheet" href="styles/tool-strip.css" />
+    <link rel="stylesheet" href="styles/canvas.css" />
+    <link rel="stylesheet" href="styles/panels.css" />
+    <link rel="stylesheet" href="styles/dialogs.css" />
+    <link rel="stylesheet" href="styles/responsive.css" />
+  </head>
+  <body>
+    <!--
+      ── TOOLBAR ────────────────────────────────────────────────────
+      Single unified top bar: file inputs, undo/redo, actions,
+      dialog toggle buttons, zoom controls, export.
+    -->
+    <header class="toolbar" role="toolbar" aria-label="Annotation actions">
+      <label class="toolbar-btn file-input" title="Upload PNG image">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+          <circle cx="9" cy="10" r="2"/>
+          <path d="M21 15l-5-5L5 21"/>
+        </svg>
+        <span>Open</span>
+        <input id="imageInput" type="file" accept="image/png" />
+      </label>
+      <label class="toolbar-btn file-input" title="Upload JSON annotations">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+          <polyline points="14 2 14 8 20 8"/>
+          <line x1="16" y1="13" x2="8" y2="13"/>
+          <line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+        <span>Open JSON</span>
+        <input id="jsonInput" type="file" accept="application/json" />
+      </label>
+
+      <span class="toolbar-divider"></span>
+
+      <button id="undoButton" class="toolbar-btn" type="button" title="Undo (Ctrl+Z)" data-command="undo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10"/>
+          <path d="M3.51 15a9 9 0 105.64-8.36L1 10"/>
+        </svg>
+        <span>Undo</span>
+      </button>
+      <button id="redoButton" class="toolbar-btn" type="button" title="Redo (Ctrl+Shift+Z)" data-command="redo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <path d="M20.49 15a9 9 0 11-5.64-8.36L23 10"/>
+        </svg>
+        <span>Redo</span>
+      </button>
+
+      <span class="toolbar-divider"></span>
+
+      <button
+        id="duplicateSelectedAnnotation"
+        class="toolbar-btn"
+        type="button"
+        title="Duplicate selected shape"
+        data-command="duplicate-selected"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="9" y="3" width="12" height="12" />
+          <rect x="3" y="9" width="12" height="12" />
+        </svg>
+        <span>Duplicate<br/>Polygons</span>
+      </button>
+      <button id="deleteSelectedAnnotation" class="toolbar-btn" type="button" title="Delete selected annotation" data-command="delete-selected-annotation">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+          <path d="M10 11v6"/>
+          <path d="M14 11v6"/>
+          <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+        </svg>
+        <span>Delete</span>
+      </button>
+      <button id="deleteSelectedVertices" class="toolbar-btn" type="button" title="Delete selected vertices" data-command="delete-selected-vertices">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="6" height="6" rx="1"/>
+          <line x1="18" y1="6" x2="22" y2="2"/>
+          <line x1="18" y1="2" x2="22" y2="6"/>
+          <rect x="2" y="16" width="6" height="6" rx="1"/>
+          <path d="M5 8v8"/>
+          <path d="M8 5h6"/>
+          <path d="M8 19h6"/>
+        </svg>
+        <span>Del Vertices</span>
+      </button>
+      <button id="clearAll" class="toolbar-btn" type="button" title="Clear all annotations" data-command="clear-all">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="15" y1="9" x2="9" y2="15"/>
+          <line x1="9" y1="9" x2="15" y2="15"/>
+        </svg>
+        <span>Clear All</span>
+      </button>
+
+      <span class="toolbar-divider"></span>
+
+      <button id="openBrightnessDialog" class="toolbar-btn" type="button" title="Brightness / Contrast">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="5"/>
+          <line x1="12" y1="1" x2="12" y2="3"/>
+          <line x1="12" y1="21" x2="12" y2="23"/>
+          <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+          <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+          <line x1="1" y1="12" x2="3" y2="12"/>
+          <line x1="21" y1="12" x2="23" y2="12"/>
+          <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+          <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+        </svg>
+        <span>Brightness<br/>Contrast</span>
+      </button>
+      <button id="openSnapDialog" class="toolbar-btn" type="button" title="Snap Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2C8 2 4 6 4 10c0 4 8 12 8 12s8-8 8-12c0-4-4-8-8-8z"/>
+          <path d="M12 7v6"/>
+          <path d="M9 10h6"/>
+        </svg>
+        <span>Snap</span>
+      </button>
+      <button id="openDisplayDialog" class="toolbar-btn" type="button" title="Display Settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+          <circle cx="12" cy="12" r="3"/>
+        </svg>
+        <span>Display</span>
+      </button>
+      <button id="openShortcuts" class="toolbar-btn" type="button" title="Help">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M9.09 9a3 3 0 115.82 1c0 2-3 2-3 4" />
+          <line x1="12" y1="17" x2="12.01" y2="17" />
+        </svg>
+        <span>Help</span>
+      </button>
+
+      <span class="toolbar-divider"></span>
+
+      <div class="toolbar-zoom-group">
+        <span class="toolbar-zoom-label">Zoom</span>
+        <div class="toolbar-zoom-controls">
+          <button id="zoomOut" class="toolbar-zoom-btn" type="button" title="Zoom Out">&minus;</button>
+          <output id="zoomValue">100%</output>
+          <button id="zoomIn" class="toolbar-zoom-btn" type="button" title="Zoom In">+</button>
+        </div>
+        <div class="toolbar-zoom-reset">
+          <button id="zoomReset" class="toolbar-zoom-btn toolbar-zoom-btn-reset" type="button" title="Reset Zoom">
+            Reset
+          </button>
+        </div>
+      </div>
+      <button id="fitWindow" class="toolbar-btn" type="button" title="Fit image to window">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+          <line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <span>Fit<br/>Window</span>
+      </button>
+
+      <span class="toolbar-spacer"></span>
+
+      <label class="format-select" for="outputFormat">
+        <select id="outputFormat">
+          <option value="llnl" selected>LLNL</option>
+          <option value="coco">MS COCO</option>
+        </select>
+      </label>
+      <button id="exportJson" class="toolbar-btn" type="button" title="Export annotations as JSON" data-command="export-json">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Export JSON</span>
+      </button>
+      <button id="exportMask" class="toolbar-btn" type="button" title="Export binary mask PNG" data-command="export-mask">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+          <polyline points="21 15 16 10 5 21"/>
+        </svg>
+        <span>Export Mask</span>
+      </button>
+      <button id="exportInvertedMask" class="toolbar-btn toolbar-btn--inverted-mask" type="button" title="Export inverted binary mask PNG" data-command="export-inverted-mask">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+          <path d="M3 12h18"/>
+          <path d="M12 3v18"/>
+          <circle cx="8.5" cy="8.5" r="1.5"/>
+        </svg>
+        <span>Invert Mask</span>
+      </button>
+    </header>
+
+    <main class="workspace">
+      <!--
+        ── LEFT: TOOL STRIP ───────────────────────────────────────
+        Narrow icon sidebar for tool selection, matching LabelMe.
+      -->
+      <aside class="tool-strip" role="toolbar" aria-label="Drawing tools">
+        <button id="toolPolygon" class="tool-strip-btn active" type="button" title="Polygon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12,3 21,10 18,21 6,21 3,10" />
+          </svg>
+          <span class="tool-strip-label">Polygon</span>
+        </button>
+        <button id="toolCurveSegment" class="tool-strip-btn" type="button" title="Curve next polygon edge (C)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 18c5-13 11-13 16 0" />
+            <circle cx="4" cy="18" r="1.5" />
+            <circle cx="20" cy="18" r="1.5" />
+          </svg>
+          <span class="tool-strip-label">Curve</span>
+        </button>
+        <button id="toolRectangle" class="tool-strip-btn" type="button" title="Rectangle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="1" />
+          </svg>
+          <span class="tool-strip-label">Rect</span>
+        </button>
+        <button id="toolEllipse" class="tool-strip-btn" type="button" title="Ellipse">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="12" rx="10" ry="7" />
+          </svg>
+          <span class="tool-strip-label">Ellipse</span>
+        </button>
+        <span class="tool-strip-divider"></span>
+        <button id="toolVertexEdit" class="tool-strip-btn" type="button" title="Vertex Edit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21l7-7" />
+            <path d="M10 14l-2-2 9-9 2 2-9 9z" />
+            <rect x="13" y="13" width="4" height="4" fill="currentColor" />
+          </svg>
+          <span class="tool-strip-label">Edit</span>
+        </button>
+      </aside>
+
+      <!--
+        ── CENTER: CANVAS ─────────────────────────────────────────
+      -->
+      <div class="canvas-wrap">
+        <canvas
+          id="annotationCanvas"
+          width="900"
+          height="600"
+          tabindex="0"
+          aria-label="Image annotation canvas"
+        ></canvas>
+        <div id="emptyState" class="empty-state">
+          Upload a PNG to get started.
+        </div>
+        <div
+          id="canvasLabelEditor"
+          class="canvas-label-editor"
+          role="dialog"
+          aria-label="Polygon label"
+          aria-hidden="true"
+          hidden
+        >
+          <div id="canvasLabelEditorTitle" class="canvas-label-editor-title">Polygon label</div>
+          <input
+            id="canvasLabelEditorInput"
+            class="canvas-label-editor-input"
+            type="text"
+            maxlength="80"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <ul id="canvasLabelEditorSuggestions" class="canvas-label-editor-suggestions"></ul>
+          <div class="canvas-label-editor-actions">
+            <button id="canvasLabelEditorOk" type="button">OK</button>
+            <button id="canvasLabelEditorCancel" type="button">Cancel</button>
+          </div>
+        </div>
+        <div
+          id="canvasContextMenu"
+          class="canvas-context-menu"
+          role="menu"
+          aria-label="Canvas menu"
+          aria-hidden="true"
+          hidden
+        >
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="tool-polygon">
+            <span>Create Polygon</span><span class="canvas-context-menu-shortcut">Ctrl+N</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="curve-segment-toggle">
+            <span>Curve Next Edge</span><span class="canvas-context-menu-shortcut">C</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="tool-rectangle">
+            <span>Create Rectangle</span><span class="canvas-context-menu-shortcut">Ctrl+R</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="tool-ellipse">
+            <span>Create Ellipse</span><span class="canvas-context-menu-shortcut"></span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="vertex-edit-toggle">
+            <span>Edit Vertices</span><span class="canvas-context-menu-shortcut">Ctrl+J</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="rename-selected">
+            <span>Edit Label</span><span class="canvas-context-menu-shortcut">Ctrl+E</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="duplicate-selected">
+            <span>Duplicate Selected Shape</span><span class="canvas-context-menu-shortcut">Ctrl+D</span>
+          </button>
+          <div class="canvas-context-menu-separator" role="separator"></div>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="delete-selected-annotation">
+            <span>Delete Selected Shape</span><span class="canvas-context-menu-shortcut">Del</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="delete-selected-vertices">
+            <span>Delete Selected Vertices</span><span class="canvas-context-menu-shortcut">Del</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="cancel-drawing">
+            <span>Cancel Current Drawing</span><span class="canvas-context-menu-shortcut">Esc</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="clear-all">
+            <span>Clear All</span><span class="canvas-context-menu-shortcut"></span>
+          </button>
+          <div class="canvas-context-menu-separator" role="separator"></div>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="undo">
+            <span>Undo</span><span class="canvas-context-menu-shortcut">Ctrl+Z</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="redo">
+            <span>Redo</span><span class="canvas-context-menu-shortcut">Ctrl+Shift+Z</span>
+          </button>
+          <div class="canvas-context-menu-separator" role="separator"></div>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="zoom-in">
+            <span>Zoom In</span><span class="canvas-context-menu-shortcut">+</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="zoom-out">
+            <span>Zoom Out</span><span class="canvas-context-menu-shortcut">-</span>
+          </button>
+          <button class="canvas-context-menu-item" type="button" role="menuitem" data-action="zoom-reset">
+            <span>Reset Zoom</span><span class="canvas-context-menu-shortcut">100%</span>
+          </button>
+        </div>
+      </div>
+
+      <!--
+        ── RIGHT: TIPS ────────────────────────────────────────────
+      -->
+      <aside class="tips-panel">
+        <section class="image-meta" aria-live="polite">
+          <h3>Image</h3>
+          <dl id="imageMetaList" class="image-meta-list">
+            <div><dt>Name</dt><dd id="metaImageName">-</dd></div>
+            <div><dt>Dimensions</dt><dd id="metaImageDimensions">-</dd></div>
+            <div><dt>File size</dt><dd id="metaImageSize">-</dd></div>
+            <div><dt>Type</dt><dd id="metaImageType">-</dd></div>
+            <div><dt>Updated</dt><dd id="metaImageUpdated">-</dd></div>
+            <div class="annotation-timer-row">
+              <dt>Time</dt>
+              <dd>
+                <div class="annotation-timer">
+                  <output id="annotationTimerValue">00:00:00</output>
+                  <div class="annotation-timer-controls">
+                    <button id="annotationTimerStart" class="annotation-timer-button" type="button" disabled>Start</button>
+                    <button id="annotationTimerStop" class="annotation-timer-button" type="button" disabled>Stop</button>
+                    <button id="annotationTimerReset" class="annotation-timer-button" type="button" disabled>Reset</button>
+                  </div>
+                </div>
+              </dd>
+            </div>
+          </dl>
+          <div id="imageLoadStatus" class="image-load-status" hidden>
+            <div class="image-load-status-row">
+              <span id="imageLoadStatusText">Loading image...</span>
+              <span id="imageLoadPercent">0%</span>
+            </div>
+            <div
+              id="imageLoadProgress"
+              class="image-load-progress"
+              role="progressbar"
+              aria-label="Image load progress"
+              aria-valuemin="0"
+              aria-valuemax="100"
+              aria-valuenow="0"
+            >
+              <div id="imageLoadProgressFill" class="image-load-progress-fill"></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="label-panel" aria-live="polite">
+          <div class="label-panel-header">
+            <h3>Label List</h3>
+            <span id="labelListCount" class="label-count">0</span>
+          </div>
+          <ul id="labelListUnique" class="label-list label-list--unique"></ul>
+        </section>
+
+        <section class="label-panel" aria-live="polite">
+          <div class="label-panel-header">
+            <h3>Shape Labels</h3>
+            <label class="shape-color-picker" title="Set selected shape color">
+              <span>Color</span>
+              <input id="selectedShapeColor" type="color" value="#22c55e" disabled />
+            </label>
+            <button id="renameSelectedPolygon" class="label-panel-action" type="button" title="Rename selected shape">
+              Rename Selected
+            </button>
+          </div>
+          <ul id="polygonLabelList" class="label-list label-list--polygons"></ul>
+        </section>
+      </aside>
+    </main>
+
+    <!--
+      ── FLOATING DIALOGS ─────────────────────────────────────────
+      Non-modal popups for settings. Click toolbar button to toggle.
+    -->
+
+    <!-- Brightness / Contrast -->
+    <div id="brightnessDialog" class="floating-dialog" role="dialog" aria-modal="false"
+         aria-labelledby="brightnessDialogTitle" aria-hidden="true" hidden>
+      <div class="floating-dialog-panel">
+        <div class="floating-dialog-header">
+          <h3 id="brightnessDialogTitle">Brightness / Contrast</h3>
+          <button id="closeBrightnessDialog" type="button" class="floating-dialog-close">&times;</button>
+        </div>
+        <div class="floating-dialog-body">
+          <label>
+            Source enhancement
+            <select id="sourceEnhancement">
+              <option value="none" selected>None</option>
+              <option value="hist-eq">Histogram Equalization</option>
+            </select>
+          </label>
+          <label>
+            Image contrast
+            <input id="imageContrast" type="range" min="50" max="200" step="5" value="100" />
+            <output id="imageContrastValue">100%</output>
+          </label>
+          <label>
+            Mask contrast
+            <input id="maskContrast" type="range" min="50" max="200" step="5" value="100" />
+            <output id="maskContrastValue">100%</output>
+          </label>
+          <label>
+            Mask opacity
+            <input id="maskOpacity" type="range" min="0" max="100" step="5" value="100" />
+            <output id="maskOpacityValue">100%</output>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snap Settings -->
+    <div id="snapDialog" class="floating-dialog" role="dialog" aria-modal="false"
+         aria-labelledby="snapDialogTitle" aria-hidden="true" hidden>
+      <div class="floating-dialog-panel">
+        <div class="floating-dialog-header">
+          <h3 id="snapDialogTitle">Snap Settings</h3>
+          <button id="closeSnapDialog" type="button" class="floating-dialog-close">&times;</button>
+        </div>
+        <div class="floating-dialog-body">
+          <label>
+            Preset
+            <select id="snapPreset">
+              <option value="balanced" selected>Balanced (Default)</option>
+              <option value="coarse-trace">Coarse Trace</option>
+              <option value="fine-boundary">Fine Boundary</option>
+              <option value="low-contrast-edge">Low Contrast Edge</option>
+              <option value="manual-cleanup">Manual Cleanup</option>
+            </select>
+          </label>
+          <div class="dialog-actions-row">
+            <button id="applyPreset" type="button">Apply</button>
+            <button id="resetSettings" type="button">Reset</button>
+          </div>
+          <label><input id="snapToggle" type="checkbox" checked /> Snap (master)</label>
+          <label><input id="smartSnapToggle" type="checkbox" checked /> Smart snap</label>
+          <label><input id="snapBorderToggle" type="checkbox" checked /> Snap to image border</label>
+          <label><input id="snapEdgeToggle" type="checkbox" checked /> Snap to local edge</label>
+          <label><input id="snapExtremaToggle" type="checkbox" /> Snap to local min/max</label>
+          <label>
+            Extrema mode
+            <select id="snapExtremaMode">
+              <option value="min" selected>Min</option>
+              <option value="max">Max</option>
+            </select>
+          </label>
+          <label>Snap radius <input id="snapRadius" type="number" min="1" max="40" step="1" value="8" /></label>
+          <label>Border threshold <input id="snapBorderThreshold" type="number" min="0" max="40" step="1" value="5" /></label>
+          <label>
+            Edge threshold
+            <input id="snapEdgeThreshold" type="range" min="0" max="255" step="5" value="40" />
+            <output id="snapEdgeThresholdValue">40</output>
+          </label>
+          <label>Extrema delta <input id="snapExtremaDelta" type="number" min="0" max="255" step="1" value="12" /></label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Display Settings -->
+    <div id="displayDialog" class="floating-dialog" role="dialog" aria-modal="false"
+         aria-labelledby="displayDialogTitle" aria-hidden="true" hidden>
+      <div class="floating-dialog-panel">
+        <div class="floating-dialog-header">
+          <h3 id="displayDialogTitle">Display</h3>
+          <button id="closeDisplayDialog" type="button" class="floating-dialog-close">&times;</button>
+        </div>
+        <div class="floating-dialog-body">
+          <label><input id="gridToggle" type="checkbox" /> Grid overlay</label>
+          <label>Grid size <input id="gridSize" type="number" min="4" max="200" step="4" value="20" /></label>
+          <label>
+            Grid opacity
+            <input id="gridOpacity" type="range" min="10" max="100" step="5" value="40" />
+            <output id="gridOpacityValue">40%</output>
+          </label>
+          <label>Grid major every <input id="gridMajorEvery" type="number" min="2" max="20" step="1" value="5" /></label>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      ── KEYBOARD SHORTCUTS MODAL ───────────────────────────────
+    -->
+    <div
+      id="newImageConfirmModal"
+      class="shortcuts-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="newImageConfirmTitle"
+      aria-hidden="true"
+      hidden
+    >
+      <div class="shortcuts-modal-panel confirm-modal-panel">
+        <div class="shortcuts-modal-header">
+          <h2 id="newImageConfirmTitle">Open new image?</h2>
+          <button id="cancelNewImageLoadTop" type="button" class="shortcuts-close">Cancel</button>
+        </div>
+        <p class="shortcuts-note">
+          Opening a new image will clear the current annotations and any in-progress drawing.
+        </p>
+        <div class="confirm-modal-actions">
+          <button id="cancelNewImageLoad" type="button" class="secondary-action">Keep Current Image</button>
+          <button id="confirmNewImageLoad" type="button" class="primary-action">Open New Image</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      id="shortcutsModal"
+      class="shortcuts-modal"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="shortcutsTitle"
+      aria-hidden="true"
+      hidden
+    >
+      <div class="shortcuts-modal-panel">
+        <div class="shortcuts-modal-header">
+          <h2 id="shortcutsTitle">Help</h2>
+          <button id="closeShortcuts" type="button" class="shortcuts-close">Close</button>
+        </div>
+        <p class="shortcuts-note">Reference tips for drawing, editing, navigation, and export.</p>
+        <details class="tips-group">
+          <summary>Drawing</summary>
+          <ul>
+            <li>Polygon: click to add points, then click near the first vertex to close.</li>
+            <li>Curve: while drawing a polygon, toggle Curve, click a bend/control point, then click the next vertex.</li>
+            <li>Dragged or duplicated shapes auto-fit inside the image bounds before export.</li>
+            <li>Ellipse: click once to set center, move cursor to size, click again to place.</li>
+            <li>Rectangle: click once for corner one, move cursor, click again for opposite corner.</li>
+          </ul>
+        </details>
+        <details class="tips-group">
+          <summary>Editing</summary>
+          <ul>
+            <li>Use Tab (next) and Shift+Tab (previous) to cycle through annotations.</li>
+            <li>Vertex edit mode: click and drag a vertex to move it.</li>
+            <li>Select a shape, then use the Color picker in Shape Labels to set its display color.</li>
+            <li>Alt + click on a polygon edge to insert a new vertex.</li>
+            <li>In Edit mode, hold Shift or Ctrl/Cmd, then drag a selection box. Shift adds and Ctrl/Cmd subtracts.</li>
+            <li>Press Delete/Backspace to remove selected annotation or vertices.</li>
+          </ul>
+        </details>
+        <details class="tips-group">
+          <summary>Navigation</summary>
+          <ul>
+            <li>Mouse wheel to zoom. Middle-click drag to pan.</li>
+            <li>Press ? to open/close this Help modal.</li>
+          </ul>
+        </details>
+        <details class="tips-group">
+          <summary>Export</summary>
+          <ul>
+            <li>Export JSON saves annotations. Export Mask saves a binary PNG. Invert Mask flips foreground/background values.</li>
+            <li>Upload JSON to replay an annotation.</li>
+          </ul>
+        </details>
+        <details class="tips-group">
+          <summary>Keyboard Shortcuts</summary>
+          <ul class="shortcuts-list">
+            <li><kbd>Ctrl/Cmd</kbd> + <kbd>Z</kbd><span>Undo last action</span></li>
+            <li><kbd>Ctrl/Cmd</kbd> + <kbd>Shift</kbd> + <kbd>Z</kbd><span>Redo last undone action</span></li>
+            <li><kbd>Tab</kbd><span>Select next annotation</span></li>
+            <li><kbd>Shift</kbd> + <kbd>Tab</kbd><span>Select previous annotation</span></li>
+            <li><kbd>Ctrl/Cmd</kbd> + <kbd>D</kbd><span>Duplicate selected shape</span></li>
+            <li><kbd>Delete</kbd> / <kbd>Backspace</kbd><span>Delete selected annotation or vertices</span></li>
+            <li><kbd>C</kbd><span>Toggle curved next polygon edge while drawing</span></li>
+            <li><kbd>Alt</kbd> + <kbd>Click</kbd><span>Insert a vertex on nearest polygon edge</span></li>
+            <li><kbd>Shift</kbd> + drag<span>In Edit mode: add vertices to marquee selection</span></li>
+            <li><kbd>Ctrl/Cmd</kbd> + drag<span>In Edit mode: subtract vertices from marquee selection</span></li>
+            <li><kbd>Mouse wheel</kbd><span>Zoom at cursor</span></li>
+            <li><kbd>Middle mouse drag</kbd><span>Pan view temporarily</span></li>
+            <li><kbd>?</kbd><span>Open/close this Help modal</span></li>
+            <li><kbd>Esc</kbd><span>Cancel active drawing (tool stays active); also closes open dialogs</span></li>
+          </ul>
+        </details>
+      </div>
+    </div>
+
+    <script type="module" src="src/app.js"></script>
+  </body>
+</html>

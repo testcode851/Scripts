@@ -1,0 +1,72 @@
+/*
+  ============================================================================
+  styles.css  –  Layout & Theming for the Segmentation Annotator
+  ============================================================================
+*/
+
+/* ── 1. THEME VARIABLES ──────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  line-height: 1.45;
+  --border: #c2c2c2;
+  --border-strong: #a9a9a9;
+  --primary: #2f74c0;
+  --primary-soft: #d9e9fb;
+  --bg: #e8e8e8;
+  --panel-bg: #efefef;
+  --surface: #f7f7f7;
+  --surface-strong: #e1e1e1;
+  --text: #1f1f1f;
+  --text-muted: #4a4a4a;
+  --button-bg: var(--surface);
+  --focus-ring: #0b63ce;
+
+  /* Surfaces and interaction states */
+  --surface-white: #fff;
+  --surface-hover: #e3e3e3;
+  --surface-subtle: #f5f5f5;
+  --surface-action: #f2f2f2;
+  --surface-canvas: #f3f3f3;
+  --surface-selection: #e8edf6;
+  --surface-progress-track: #d8d8d8;
+  --button-hover-bg: #fdfdfd;
+
+  /* Text and icon states */
+  --text-heading: #2b2b2b;
+  --text-heading-strong: #2a2a2a;
+  --text-menu: #222;
+  --text-secondary: #555;
+  --text-output: #444;
+  --text-subtle: #666;
+  --text-placeholder: #6d6d6d;
+  --text-disabled: #909090;
+  --text-disabled-subtle: #aaa;
+  --primary-text-strong: #1f4d81;
+  --selected-text-subtle: #ecf4ff;
+
+  /* Borders */
+  --border-hover: #98acc5;
+  --border-soft: #e4e4e4;
+  --border-faint: #e6e6e6;
+  --border-canvas: #b7b7b7;
+  --border-key: #bcbcbc;
+  --separator: #d6d6d6;
+  --swatch-border: rgba(0, 0, 0, 0.35);
+  --swatch-border-selected: rgba(255, 255, 255, 0.7);
+
+  /* Specialized controls and status */
+  --button-hover-text: #1d4f8a;
+  --inverted-control-bg: #111827;
+  --inverted-control-text: #f9fafb;
+  --progress-start: #4b78aa;
+  --progress-end: #6d97c4;
+  --status-success: #5aa66f;
+  --status-error: #bd5a5a;
+
+  /* Shadows and overlays */
+  --shadow-menu: rgba(0, 0, 0, 0.2);
+  --shadow-dialog: rgba(15, 23, 42, 0.18);
+  --shadow-modal: rgba(15, 23, 42, 0.2);
+  --modal-overlay: rgba(15, 23, 42, 0.45);
+}

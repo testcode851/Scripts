@@ -1,0 +1,167 @@
+/* ── 6. CENTER CANVAS ────────────────────────────────────────────────── */
+.canvas-wrap {
+  position: relative;
+  background: var(--surface-white);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 12px;
+  min-height: 70vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  align-self: start;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+  max-width: 100%;
+  max-height: 100%;
+  border: 1px dashed var(--border-canvas);
+  background: var(--surface-canvas);
+}
+
+.empty-state {
+  position: absolute;
+  inset: 12px;
+  display: grid;
+  place-items: center;
+  font-weight: 600;
+  color: var(--text-placeholder);
+  pointer-events: none;
+}
+
+.canvas-label-editor {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 40;
+  width: min(280px, calc(100% - 24px));
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 8px 18px var(--shadow-menu);
+  padding: 7px;
+  display: grid;
+  gap: 6px;
+}
+
+.canvas-label-editor-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-heading);
+  line-height: 1.2;
+}
+
+.canvas-label-editor-input {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--surface-white);
+  color: var(--text);
+  font-size: 0.78rem;
+  padding: 5px 6px;
+}
+
+.canvas-label-editor-suggestions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-white);
+  max-height: 118px;
+  overflow-y: auto;
+}
+
+.canvas-label-editor-suggestion {
+  width: 100%;
+  text-align: left;
+  background: var(--surface-white);
+  border: 0;
+  border-bottom: 1px solid var(--border-soft);
+  padding: 4px 6px;
+  font-size: 0.74rem;
+  color: var(--text-menu);
+}
+
+.canvas-label-editor-suggestion:last-child {
+  border-bottom: 0;
+}
+
+.canvas-label-editor-suggestion:hover {
+  background: var(--surface-selection);
+}
+
+.canvas-label-editor-suggestion.is-match {
+  background: var(--primary-soft);
+  color: var(--primary-text-strong);
+}
+
+.canvas-label-editor-suggestion-empty {
+  margin: 0;
+  padding: 5px 6px;
+  font-size: 0.72rem;
+  color: var(--text-subtle);
+}
+
+.canvas-label-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.canvas-label-editor-actions button {
+  min-width: 54px;
+  padding: 3px 8px;
+  font-size: 0.72rem;
+}
+
+.canvas-context-menu {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 46;
+  width: min(280px, calc(100% - 24px));
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 8px 18px var(--shadow-menu);
+  padding: 4px 0;
+  display: grid;
+}
+
+.canvas-context-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  color: var(--text-menu);
+  font-size: 0.75rem;
+  padding: 4px 10px;
+}
+
+.canvas-context-menu-item:hover {
+  background: var(--surface-selection);
+}
+
+.canvas-context-menu-item:disabled {
+  color: var(--text-disabled);
+  background: transparent;
+  cursor: default;
+}
+
+.canvas-context-menu-shortcut {
+  color: var(--text-subtle);
+  font-size: 0.7rem;
+}
+
+.canvas-context-menu-item:disabled .canvas-context-menu-shortcut {
+  color: var(--text-disabled-subtle);
+}
+
+.canvas-context-menu-separator {
+  height: 1px;
+  background: var(--separator);
+  margin: 3px 0;
+}

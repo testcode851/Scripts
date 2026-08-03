@@ -1,8 +1,0 @@
-{
-  "name": "segmentation-app-transfer",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "node scripts/dev-server.js"
-  }
-}

@@ -1,8 +1,0 @@
-/* ── 4. WORKSPACE GRID ───────────────────────────────────────────────── */
-.workspace {
-  display: grid;
-  grid-template-columns: 56px minmax(0, 1fr) 300px;
-  gap: 8px;
-  padding: 8px 12px 12px;
-  align-items: start;
-}

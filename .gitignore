@@ -57,5 +57,6 @@ refactored_usaspending/
 !logs/.gitkeep
 
 docs/*.md
+!docs/COMPANY_DATA_WORKFLOW.md
 
 markdown/

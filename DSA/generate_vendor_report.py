@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
+from decimal import Decimal
 import hashlib
 import importlib.util
 import json
@@ -21,7 +22,7 @@ from xml.sax.saxutils import escape
 import numpy as np
 import pandas as pd
 
-VERSION = "1.0"
+VERSION = "1.1"
 KEYS = ["feature_type", "material_family", "size", "unit", "nominal",
         "upper_tolerance", "lower_tolerance"]
 REQUIRED = {
@@ -44,7 +45,7 @@ REQUIRED = {
 
 def number(value):
     """Retain small nonzero differences rather than rounding them to zero."""
-    return "Unavailable" if pd.isna(value) else f"{float(value):.5g}"
+    return "Unavailable" if pd.isna(value) else format(Decimal(f"{float(value):.5g}"), "f")
 
 
 def date_text(value):
@@ -157,8 +158,9 @@ def _chart(data, path, palette):
                 color = palette[str(v)]
                 patch.set_facecolor(color)
                 selected = data.loc[data.vendor_id.eq(v)]
-                labels.append(f"{v}  n={len(values):,}\n{selected.part_number.nunique()} parts / "
-                              f"{selected.comparison_id.nunique()} features")
+                n_parts, n_features = selected.part_number.nunique(), selected.comparison_id.nunique()
+                labels.append(f"{v}  n={len(values):,}\n{n_parts} part{'s' if n_parts != 1 else ''} / "
+                              f"{n_features} feature{'s' if n_features != 1 else ''}")
                 style = ["-", "--", "-.", ":"][i % 4]
                 constant = values.nunique() < 2 or values.std() == 0
                 if constant:
@@ -172,9 +174,9 @@ def _chart(data, path, palette):
                     label=f"{v} (n={len(values):,})" + (" constant" if constant else "")))
             box.set_yticks(range(1, len(vendors) + 1), labels)
             box.invert_yaxis()
-            box.set_title("Median and middle 50 percent")
-            kde.set_title("Distribution shape by vendor")
-            kde.set_ylabel("Estimated density")
+            box.set_title("Typical value and spread")
+            kde.set_title("Where measurements cluster")
+            kde.set_ylabel("Density (not a count or percent)")
             kde.legend(handles=handles, fontsize=8, loc="upper right", framealpha=.85)
             lo = min(0., float(data.calculated_deviation.min()))
             hi = max(0., float(data.calculated_deviation.max()))
@@ -182,7 +184,7 @@ def _chart(data, path, palette):
             for ax in (box, kde):
                 ax.axvline(0, color="#666666", linestyle=":", linewidth=.8)
                 ax.set_xlim(lo - pad, hi + pad)
-                ax.set_xlabel("Deviation = actual - nominal")
+                ax.set_xlabel("Difference from target (actual - nominal)")
                 ax.ticklabel_format(axis="x", style="plain", useOffset=False)
                 ax.xaxis.set_major_locator(MaxNLocator(5))
                 ax.tick_params(axis="x", labelsize=8)
@@ -195,9 +197,9 @@ def _chart(data, path, palette):
 
 
 def _context(row):
-    return (f"{row['feature_type']} | {row['material_family']} | {row['size']} | unit label {row['unit']}. "
-            f"Nominal {number(row['nominal'])}; upper tolerance {number(row['upper_tolerance'])}; "
-            f"lower tolerance {number(row['lower_tolerance'])}.")
+    return (f"{row['feature_type']} | {row['material_family']} | {row['size']} | units recorded as {row['unit']}. "
+            f"Target (nominal): {number(row['nominal'])}. Recorded tolerances: "
+            f"upper {number(row['upper_tolerance'])}, lower {number(row['lower_tolerance'])}.")
 
 
 def prepare_report(namespace, *, source_label, output_dir=None, data_kind="production"):
@@ -252,9 +254,9 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
     heading("Parallelism vendor comparison results", 0)
     paragraph("Draft for project review" + (" - SYNTHETIC TEST DATA" if data_kind == "synthetic" else ""))
     paragraph(f"Source: {source_label}. Generated {now.strftime('%Y-%m-%d %H:%M UTC')}.")
-    paragraph("This report describes differences in recorded parallelism measurements across vendors. "
-              "It compares broader groups across parts with results for exactly shared parts and features, "
-              "so the reader can assess how much the available comparisons control for differences in supplied work.")
+    paragraph("We compared vendors' parallelism measurements to see how their results differ. We started "
+              "with parts that have matching material, size, units, and specifications, then checked the "
+              "findings against cases where vendors measured the same feature on the same part.")
     eligible = len(namespace["broad_records"])
     included = len(data)
     matched = pairs.loc[pairs.shared_eligible_feature_groups.gt(0)]
@@ -262,17 +264,34 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
                 for r in matched.itertuples())
     changed = sum(direction(r.pooled_difference_b_minus_a) != direction(r.equal_part_difference_b_minus_a)
                   for r in pairs.itertuples())
-    paragraph(f"The broader analysis includes {included:,} of {eligible:,} eligible parallelism measurements "
-              f"({100 * included / eligible:.1f}%)." if eligible else "No eligible parallelism measurements are available.")
-    paragraph(f"There are {data.broad_id.nunique():,} qualifying broad groups out of "
-              f"{len(namespace['broad_inventory']):,} recorded contexts. Count rules exclude "
-              f"{eligible - included:,} records from these comparisons; this does not identify bad measurements.")
-    paragraph(f"Of {len(pairs):,} vendor-pair comparisons, {len(matched):,} have a direct shared-feature reference. "
-              f"Among those, {agree:,} have the same direction for the pooled and shared-feature differences. "
-              f"Changing from pooled medians to equal-part summaries changes the direction in {changed:,} pairs.")
-    paragraph("The results describe observed differences. They do not establish a vendor ranking, statistical "
-              "significance, process capability, or the cause of a difference. Vendors may supply different "
-              "geometries and may have been inspected during different periods or batches.")
+    paragraph(f"The comparison covers {included:,} of {eligible:,} measurements available after the earlier "
+              f"data checks ({100 * included / eligible:.1f}%)." if eligible else "No parallelism measurements are available after the data checks.")
+    paragraph(f"Of {len(namespace['broad_inventory']):,} combinations of recorded requirements, "
+              f"{data.broad_id.nunique():,} had enough measurements from at least two vendors. "
+              f"The remaining {eligible - included:,} measurements could not be included under this rule. "
+              "Being left out does not mean a measurement is incorrect.")
+    if len(matched):
+        paragraph(f"We could check {len(matched):,} of the {len(pairs):,} vendor comparisons using the same "
+                  "parts and features. " +
+                  ("All of these checks supported the broader finding about which vendor had the smaller "
+                   "typical distance from the target, or whether their results were about equal."
+                   if agree == len(matched) else
+                   f"In {agree:,} of these checks, the result agreed with the broader comparison about which "
+                   "vendor had the smaller typical distance from the target, or whether they were about equal. "
+                   "The other comparisons need a closer look at the parts and features included."))
+    else:
+        paragraph("No vendor comparison had enough measurements of the same part and feature for a direct check.")
+    weighting_note = (
+        "Giving each part an equal say in the summary did not change which vendor had the smaller value "
+        "in any comparison, including cases where the values were about equal."
+        if changed == 0 else
+        f"Giving each part an equal say changed the result in {changed:,} of {len(pairs):,} comparisons. "
+        "This shows that the number of measurements from each part or feature can affect the overall picture."
+    ) if len(pairs) else "There are no qualifying vendor pairs for the check that gives each part equal weight."
+    paragraph(weighting_note)
+    paragraph("These findings help us decide where to look more closely. They do not establish which vendor "
+              "is best overall: vendors may be making parts of different difficulty, and the measurements "
+              "may come from different inspection periods or batches.")
     group_rows = []
     for bid, frame in data.groupby("broad_id", sort=True):
         r = frame.iloc[0]
@@ -281,36 +300,38 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
     table(["Group", "Material", "Size", "Unit label", "Vendors", "Parts", "Records"],
           group_rows, [.65, 1.15, .7, 1.05, .65, .6, .8])
 
-    page("How the comparisons were formed")
-    paragraph("The detailed G groups match feature name and part number as well as feature type, material "
-              "family, size, unit, nominal, upper tolerance, and lower tolerance. Broad B groups allow "
-              "different part numbers and feature names while retaining exact matching on the other seven fields. "
-              "No unit conversion, tolerance rounding, or tolerance bands are introduced.")
-    paragraph(f"A broad group needs at least two vendors with {minimum} usable measurements each. "
-              "A vendor can reach that count across several features or parts. A shared-feature reference "
-              f"requires both vendors to have at least {minimum} usable measurements for that exact G group.")
-    heading("Approved preparation and assumptions", 2)
-    paragraph("The notebook removes extra exact source-row copies, fills only missing or blank units with "
-              "Standard, drops rows with missing size, and calculates deviation as actual minus nominal. "
-              "Missing comparison context, unusable measurements, and missing vendor IDs remain excluded. "
-              "Changing specifications are treated as legitimate differences. Identical unit labels and "
-              "compatible parallelism definitions are assumed to have the same physical meaning. Standard "
-              "and Metric remain separate; Standard is retained as a source label.")
-    heading("What the summaries measure", 2)
-    paragraph("Pooled results give each measurement equal weight. The equal-part summary first calculates "
-              "the median absolute deviation from nominal for each feature, averages feature medians within "
-              "a part, and then averages parts equally. It is an average of summaries, not a pooled median. "
-              "Small features and parts can still contribute; their counts are disclosed in the appendix.")
-    paragraph("The shared reference uses exactly the same eligible features for both vendors, averaging "
-              "features within parts and then parts equally. Every reported difference is vendor B minus "
-              "vendor A in source units. Negative means B has a smaller value. No shared reference means "
-              "no directly matched comparison is available, not zero difference.")
-    heading("How to read the figures", 2)
-    paragraph("Boxplots show the median, middle 50%, and points outside the 1.5 IQR whiskers. IQR is the "
-              "75th percentile minus the 25th. P95 is the 95th percentile of absolute deviation from nominal. "
-              "Boxplot outliers are not failure counts. KDEs estimate distribution shape, with each vendor "
-              "normalized independently. Height is density, not percent or record count. Constant values are "
-              "shown as lines. The dotted line marks zero deviation; all observed values remain in view.")
+    page("How we made the comparisons")
+    paragraph("A feature is a specific characteristic measured on a part. For the broader comparison, we "
+              "allowed different parts and feature names, but kept the feature type, material, size category, "
+              "unit, target value, and both tolerances the same. We also made a more direct comparison wherever "
+              "vendors measured the same named feature on the same part.")
+    paragraph(f"Each broader group needed at least two vendors with {minimum} usable measurements each. "
+              "Those measurements can come from several parts or features. For a direct check, both vendors "
+              f"needed at least {minimum} measurements of the same feature on the same part.")
+    heading("How we prepared the data", 2)
+    paragraph("We removed extra copies of identical rows and left out rows without a size. As agreed, we "
+              "treated blank units as Standard and kept Standard and Metric separate. We assumed matching "
+              "unit labels and parallelism definitions mean the same thing across vendors. Measurements "
+              "without the other information needed for comparison were also left out.")
+    paragraph("Different target values or tolerances stayed in separate groups, even when the numbers "
+              "were close. The charts show the measured value minus the target value, also called deviation. "
+              "Zero means the measurement equals the target; a negative value is below the target.")
+    heading("Why we checked the results two ways", 2)
+    paragraph("The combined charts include every usable measurement, so a part measured frequently has "
+              "more influence. We also calculated a summary that gives each part equal weight. This checks "
+              "whether one heavily measured part is driving the comparison. The calculation details and "
+              "counts are included at the back of the report.")
+    heading("How to read the charts and tables", 2)
+    paragraph("In each boxplot, the line inside the box is the middle value, called the median. The box "
+              "holds the middle half of the measurements; a wider box means more spread. Dots beyond the "
+              "whiskers show unusual values, but do not automatically mean a part failed inspection.")
+    paragraph("The smooth curves show where measurements tend to cluster. A curve farther to the right "
+              "shows larger differences from the target. Curve height is not a count, percentage, or quality "
+              "score. Each vendor's curve is scaled separately so vendors with different sample sizes can "
+              "be compared. If all values are the same, a line replaces the curve.")
+    paragraph("The tables show the typical difference, the spread of the middle half, and a value that "
+              "about 95% of distances from the target fall at or below. These describe different aspects "
+              "of the results: a smaller typical value does not necessarily mean less variation.")
 
     import seaborn as sns
     vendor_ids = sorted(data.vendor_id.unique(), key=str)
@@ -325,8 +346,9 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
         row = frame.iloc[0]
         page(f"{bid} {row['size']} part results")
         paragraph(_context(row))
-        paragraph("This figure combines each vendor's included parts and features. Differences in the supplied "
-                  "parts can influence the result even when all recorded requirements match.")
+        paragraph("These charts show the measurements for the parts each vendor supplied. Keep the parts "
+                  "in mind when comparing vendors: matching specifications do not necessarily mean the "
+                  "parts are equally difficult to make.")
         # Split large vendor sets into readable panels; preserve all vendors and
         # explicitly disclose that each panel has its own full data range.
         vendors = sorted(frame.vendor_id.unique(), key=str)
@@ -338,48 +360,63 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
                 paragraph(f"Vendor panel {start // 6 + 1}. Each panel shows its own full measurement range; compare axis values.")
             chart(subset, f"broad_{bid}_{start // 6 + 1}.png")
         part = metrics.loc[metrics.broad_id.eq(bid)]
-        table(["Vendor", "Records", "Median deviation", "IQR deviation", "P95 absolute deviation"],
+        table(["Vendor", "Measurements", "Typical difference (median)", "Spread of middle half", "95% distance value"],
               [[r.vendor_id, f"{r.measurements:,}", number(r.median_deviation), number(r.iqr_deviation),
                 number(r.p95_absolute_deviation)] for r in part.itertuples()], [.85, .75, 1.1, 1.1, 1.8])
         pp = pairs.loc[pairs.broad_id.eq(bid)]
-        paragraph(f"{int(pp.shared_eligible_feature_groups.gt(0).sum())} of {len(pp)} vendor pairs in this group "
-                  "have a shared-feature reference. See the appendix for the contributing parts, weighting checks, "
-                  "dates, and the exact shared-feature figures.")
+        paragraph(f"We could check {int(pp.shared_eligible_feature_groups.gt(0).sum())} of the {len(pp)} "
+                  "vendor comparisons in this group using the same parts and features. The supporting "
+                  "tables and charts at the back show which parts and features were included.")
         comparisons = pp.loc[pp.shared_eligible_feature_groups.gt(0)]
         for check in comparisons.head(3).itertuples():
             delta = check.shared_difference_b_minus_a
             if abs(delta) <= 1e-12:
-                observation = f"Vendors {check.vendor_a} and {check.vendor_b} have approximately equal shared-feature summaries."
+                observation = f"Vendors {check.vendor_a} and {check.vendor_b} had about the same typical distance from the target on the features they both measured."
             else:
                 lower, higher = ((check.vendor_b, check.vendor_a) if delta < 0 else (check.vendor_a, check.vendor_b))
-                observation = f"Vendor {lower} has a smaller shared-feature summary than {higher} by {number(abs(delta))}."
+                observation = (f"On the features both vendors measured, vendor {lower} had a smaller typical "
+                               f"distance from the target than {higher}. The difference between their summaries "
+                               f"was {number(abs(delta))} in the recorded units.")
             same = direction(delta) == direction(check.pooled_difference_b_minus_a)
-            paragraph(observation + f" This uses {check.shared_eligible_feature_groups} exactly shared feature groups "
-                      f"({check.shared_comparison_ids}). The pooled comparison direction "
-                      + ("agrees." if same else "differs; the supplied part and feature mix needs attention."))
+            count = check.shared_eligible_feature_groups
+            paragraph(observation + f" This check covers {count} matching feature{'s' if count != 1 else ''} "
+                      f"({check.shared_comparison_ids}). "
+                      + ("It supports the broader finding." if same else
+                         "This differs from the broader finding, so the parts and features included need a closer look."))
         if len(comparisons) > 3:
             paragraph("The first three shared comparisons are described here; all remaining pairs appear in the appendix.")
         if not comparisons.empty:
-            paragraph("These are differences in typical absolute deviation, not a conclusion about every vendor's spread or extremes.")
+            paragraph("This finding concerns typical distance from the target. The spread and unusually large "
+                      "values still need to be considered separately.")
 
-    page("Interpretation and follow up")
-    paragraph("Use the broad figures to describe the measurements for the work each vendor supplied. "
-              "Use the shared-feature comparisons to assess differences on the same recorded part and feature. "
-              "A shared feature controls more of the part context, but still does not match dates, batches, "
-              "inspection methods, or establish independent observations.")
-    paragraph(f"The pooled and equal-part comparison directions differ in {changed} of {len(pairs)} pairs. "
-              "Where they differ, inspect which parts and features contribute most. Agreement only shows "
-              "stability under this weighting change; it does not remove differences in the parts supplied.")
-    paragraph("Before attributing a difference to vendor performance, review inspection periods and batches, "
-              "confirm the engineering comparability of different geometries, and investigate unusual values "
-              "using the source records. Choose any tolerance bands with engineering input rather than "
-              "merging similar numbers automatically.")
-    paragraph("The following appendix contains all pair comparisons and supporting coverage. No table preview "
-              "limit is applied. Missing dates and absent shared references are explicitly retained.")
+    page("What the results mean and what to check next")
+    paragraph("The broader charts show how vendors' measurements differ across the work they supplied. "
+              "The checks using the same parts and features give us a more direct comparison. Even then, "
+              "inspection dates, batches, and measurement methods may differ.")
+    paragraph(weighting_note + " Giving parts equal weight helps us check the effect of measurement counts, "
+              "but it does not make different parts equally difficult to manufacture.")
+    paragraph("The next step is to review the differences with engineering and quality. Check whether the "
+              "parts are comparable in practice, whether vendors were inspected during similar periods, "
+              "and whether unusual measurements can be explained by the inspection records. Any decision "
+              "to combine similar tolerances should be agreed with engineering.")
+    paragraph("Use this report to guide those discussions and decide where further investigation is "
+              "worthwhile. It does not establish an overall vendor ranking, prove that a difference is "
+              "caused by the vendor, or calculate inspection failure rates.")
+    paragraph("The appendix contains the full comparison tables and supporting charts, including missing "
+              "dates and cases where vendors do not have measurements of the same parts and features.")
 
-    page("Appendix vendor pair checks")
-    paragraph("Differences are B minus A in source units. Pooled uses median absolute deviation; equal part "
-              "and shared use the hierarchy described earlier. A positive difference means B's value is larger.")
+    page("Appendix comparison details")
+    paragraph("In these tables, distance from the target means the size of the difference, whether a "
+              "measurement is above or below the target. The combined result, labeled Pooled, is the median "
+              "of these distances across all included measurements for a vendor.")
+    paragraph("For the Equal part result, we take the median distance for each feature, average the feature "
+              "medians within each part, then average those part summaries. This gives features equal weight "
+              "within a part and gives parts equal weight overall. It is not the median of all measurements. "
+              "The Shared result uses the same calculation, restricted to the exact features both vendors "
+              "measured on the same parts.")
+    paragraph("Every difference below is vendor B's result minus vendor A's result, in the recorded units. "
+              "A negative number means B has the smaller distance; a positive number means B has the larger "
+              "distance. No reference means we could not make a direct check using the same parts and features.")
     for bid, frame in pairs.groupby("broad_id", sort=True):
         heading(str(bid), 2)
         table(["Vendor A", "Vendor B", "Shared features", "Pooled difference", "Equal part difference", "Shared difference"],
@@ -388,25 +425,29 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
                 "No reference" if pd.isna(r.shared_difference_b_minus_a) else number(r.shared_difference_b_minus_a)]
                for r in frame.itertuples()], [.85, .85, .65, .95, 1., 1.3], chunk=10)
 
-    page("Appendix part contributions and weighting")
-    paragraph("Part shares are percentages of that vendor's broad-context records. Vendors below the count "
-              "threshold remain visible with Included = No. Equal weighting changes record influence, not part difficulty.")
+    page("Appendix parts included in the comparison")
+    paragraph("Share percent shows how much of a vendor's data in that group comes from each part. Included "
+              "is No when a vendor does not have enough measurements to enter the comparison. Those counts "
+              "remain visible so you can see what was left out.")
     mix = namespace["broad_part_mix"]
     table(["Group", "Vendor", "Part", "Records", "Features", "Share percent", "Included"],
           [[r.broad_id, r.vendor_id, r.part_number, f"{r.measurements:,}", r.feature_groups,
             f"{r.record_share_percent:.1f}", "Yes" if r.included_in_comparison else "No"]
            for r in mix.itertuples()], [.55, .8, 1.1, .7, .65, .95, .85], chunk=14)
     heading("Equal part summary", 2)
+    paragraph(f"Small features and small parts have fewer than {minimum} measurements each. They still "
+              "contribute if the vendor qualifies for the broader group; their counts are shown so their "
+              "influence can be reviewed.")
     m_index = metrics.set_index(["broad_id", "vendor_id"])
     table(["Group", "Vendor", "Pooled absolute median", "Equal part summary", "Small features", "Small parts"],
           [[r.broad_id, r.vendor_id, number(m_index.loc[(r.broad_id, r.vendor_id), "median_absolute_deviation_from_nominal"]),
             number(r.equal_part_mean_feature_median), r.small_feature_groups, r.small_parts]
            for r in equal.itertuples()], [.6, .8, 1.2, 1.2, .9, .95], chunk=14)
 
-    page("Appendix dates and unit assumptions")
-    paragraph("First and last dates describe coverage. Overlap of these ranges does not mean observations "
-              "were collected at the same times or from matched batches. Assumed units counts retained records "
-              "whose missing source unit was filled with Standard.")
+    page("Appendix inspection dates and units")
+    paragraph("These are the earliest and latest inspection dates available for each vendor in each group. "
+              "Overlapping date ranges do not mean the same batches or inspection dates were compared. "
+              "Assumed units counts the measurements where a blank unit was filled with Standard.")
     table(["Group", "Vendor", "First date", "Last date", "Missing dates", "Assumed units"],
           [[r.broad_id, r.vendor_id, date_text(r.first_date), date_text(r.last_date), r.missing_dates,
             int(r.assumed_standard_records)] for r in metrics.itertuples()], [.6, .8, 1.05, 1.05, 1.05, 1.1])
@@ -421,7 +462,7 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
     shared_ids = shared_ids.loc[shared_ids.ge(2)]
     for index, ((bid, gid), _) in enumerate(shared_ids.items()):
         if index % 2 == 0:
-            page("Appendix shared feature figures")
+            page("Appendix comparisons on the same parts and features")
         allowed = qualifying.loc[qualifying.broad_id.eq(bid) & qualifying.comparison_id.eq(gid), "vendor_id"]
         subset = data.loc[data.broad_id.eq(bid) & data.comparison_id.eq(gid) & data.vendor_id.isin(allowed)]
         row = subset.iloc[0]
@@ -434,7 +475,7 @@ def prepare_report(namespace, *, source_label, output_dir=None, data_kind="produ
                 page("Shared feature vendors continued")
             chart(subset.loc[subset.vendor_id.isin(vendors[start:start + 6])],
                   f"shared_{bid}_{index}_{start}.png")
-        paragraph("Same recorded part and feature; vendors may still differ in inspection periods and batches.")
+        paragraph("These vendors measured the same part and feature. Their inspection periods and batches may still differ.")
     if shared_ids.empty:
         paragraph("No detailed feature in the included broad groups has two vendors meeting the per-feature minimum.")
 

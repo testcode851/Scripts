@@ -7,6 +7,8 @@ export const COMMANDS = Object.freeze({
   ANNOTATION_RENAME_REQUEST: "rename-selected",
   ANNOTATION_RENAME: "annotation.rename",
   ANNOTATION_RENAME_CREATED: "annotation.rename-created",
+  ANNOTATION_ASSIGN_CLASS: "annotation.assign-class",
+  ANNOTATION_SET_EDITOR_STATE: "annotation.set-editor-state",
   ANNOTATION_SET_COLOR: "annotation.set-color",
   ANNOTATION_DUPLICATE: "duplicate-selected",
   ANNOTATION_DELETE: "delete-selected-annotation",

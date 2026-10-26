@@ -12,6 +12,7 @@ export function createToolActions(options) {
     setTool,
     syncToolStrip,
     redraw,
+    onDocumentChange = () => {},
   } = options;
   const interactionReset = createInteractionReset(interactionState);
 
@@ -22,18 +23,26 @@ export function createToolActions(options) {
   }
 
   function toggleVertexEditMode() {
+    const endsGeometryEdit = interactionState.isDrawing
+      && Boolean(interactionState.activeVertex || interactionState.activeAnnotationDrag);
     interactionState.vertexEditEnabled = !interactionState.vertexEditEnabled;
     interactionReset.clearGeometryInteraction();
     interactionReset.stopDrawing();
     if (!interactionState.vertexEditEnabled) clearVertexSelection();
     syncToolStrip();
     redraw();
+    if (endsGeometryEdit) onDocumentChange();
   }
 
   function switchTool(tool) {
+    const endsGeometryEdit = interactionState.vertexEditEnabled && interactionState.isDrawing
+      && Boolean(interactionState.activeVertex || interactionState.activeAnnotationDrag);
+    const clearsFixedDraft = interactionState.currentPolygon.length > 0
+      || Boolean(interactionState.currentCurveControl);
     if (interactionState.vertexEditEnabled) disableVertexEditing();
     setTool(tool);
     syncToolStrip();
+    if (endsGeometryEdit && !clearsFixedDraft) onDocumentChange();
   }
 
   function toggleCurveSegmentMode() {

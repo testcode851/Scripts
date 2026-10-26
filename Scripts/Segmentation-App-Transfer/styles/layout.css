@@ -1,4 +1,25 @@
 /* ── 4. WORKSPACE GRID ───────────────────────────────────────────────── */
+.app-page-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-white);
+}
+.app-page-brand {
+  font-weight: 600;
+  margin-right: auto;
+}
+.app-page-nav [aria-selected="true"] {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-text-strong);
+}
+@media (max-width: 560px) {
+  .app-page-brand { font-size: 0.8rem; }
+  .app-page-nav { padding: 8px; }
+}
 .workspace {
   display: grid;
   grid-template-columns: 56px minmax(0, 1fr) 300px;

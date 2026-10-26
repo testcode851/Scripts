@@ -1,5 +1,6 @@
 import { COMMANDS } from "../commands/command-names.js";
 import { clonePolygonPoint } from "../geometry/polygon.js";
+import { rememberAnnotationLabel } from "../model/annotation-labels.js";
 import {
   createEllipseAnnotation,
   createPolygonAnnotation,
@@ -24,11 +25,20 @@ export function createAnnotationCreation({
   selectAnnotation,
   getDefaultShapeColor,
   labels,
+  getActiveClass = () => null,
+  isClassAvailable = () => true,
   alertFn = globalThis.alert,
   closeSnapRadius = 10,
   minShapeDragPixels = 1,
 }) {
   const { clampPointToImage, scalePoint } = coordinates;
+
+  function captureClassChoice() {
+    const choice = getActiveClass();
+    return choice ? { id: choice.id, name: choice.name } : null;
+  }
+
+  const availableClass = (choice) => choice && isClassAvailable(choice) ? choice : null;
 
   const toEllipse = (start, end) => ({
     cx: start.x,
@@ -53,7 +63,11 @@ export function createAnnotationCreation({
     const snappedPoint = applySnap(point);
     if (!interactionState[stateKey]) {
       clearSelectionForShapeCreation();
-      interactionState[stateKey] = { start: snappedPoint, end: snappedPoint };
+      const classChoice = captureClassChoice();
+      interactionState[stateKey] = {
+        start: snappedPoint, end: snappedPoint,
+        ...(classChoice ? { classChoice } : {}),
+      };
       redraw();
       return;
     }
@@ -80,8 +94,9 @@ export function createAnnotationCreation({
       redraw();
       return false;
     }
+    const classChoice = availableClass(draft.classChoice);
     const annotation = createEllipseAnnotation({
-      label: labels.ellipse,
+      label: classChoice?.name || labels.ellipse,
       color: getDefaultShapeColor(),
       ellipse: toEllipse(draft.start, draft.end),
     });
@@ -90,13 +105,17 @@ export function createAnnotationCreation({
     selectAnnotation(null);
     interactionState.ellipseDraft = null;
     interactionState.isDrawing = false;
-    openLabelEditor({
-      annotationType: "ellipse",
-      annotationIndex: index,
-      initialLabel: labels.ellipse,
-      anchorImagePoint: { ...draft.end },
-      reason: "creation",
-    });
+    if (classChoice) {
+      rememberAnnotationLabel(annotationState, "ellipse", classChoice.name);
+    } else {
+      openLabelEditor({
+        annotationType: "ellipse",
+        annotationIndex: index,
+        initialLabel: labels.ellipse,
+        anchorImagePoint: { ...draft.end },
+        reason: "creation",
+      });
+    }
     redraw();
     return true;
   }
@@ -109,8 +128,9 @@ export function createAnnotationCreation({
       redraw();
       return false;
     }
+    const classChoice = availableClass(draft.classChoice);
     const annotation = createPolygonAnnotation({
-      label: labels.rectangle,
+      label: classChoice?.name || labels.rectangle,
       color: getDefaultShapeColor(),
       points: toRectanglePoints(draft.start, draft.end),
     });
@@ -119,12 +139,16 @@ export function createAnnotationCreation({
     selectAnnotation(null);
     interactionState.rectangleDraft = null;
     interactionState.isDrawing = false;
-    openLabelEditor({
-      polygonIndex: index,
-      initialLabel: labels.rectangle,
-      anchorImagePoint: draft.end,
-      reason: "creation",
-    });
+    if (classChoice) {
+      rememberAnnotationLabel(annotationState, "polygon", classChoice.name);
+    } else {
+      openLabelEditor({
+        polygonIndex: index,
+        initialLabel: labels.rectangle,
+        anchorImagePoint: draft.end,
+        reason: "creation",
+      });
+    }
     redraw();
     return true;
   }
@@ -137,8 +161,13 @@ export function createAnnotationCreation({
   }
 
   function makePolygonPoint(point, curveFrom = null) {
+    const clamped = clampPointToImage(point);
     const snapped = clampPointToImage(applySnap(point));
-    const result = { x: snapped.x, y: snapped.y };
+    // Outside the image, keep the crossed boundary fixed while sliding along it.
+    const result = {
+      x: point.x !== clamped.x ? clamped.x : snapped.x,
+      y: point.y !== clamped.y ? clamped.y : snapped.y,
+    };
     if (curveFrom) result.curveFrom = clampPointToImage(applySnap(curveFrom));
     return result;
   }
@@ -146,8 +175,12 @@ export function createAnnotationCreation({
   function addPolygonPoint(point) {
     startTimer();
     if (interactionState.currentPolygon.length === 0) clearSelectionForShapeCreation();
-    if (isNearFirstVertex(point)) {
-      executeCommand(COMMANDS.ANNOTATION_CREATE_POLYGON, { closePoint: point });
+    const clamped = clampPointToImage(point);
+    const closePoint = point.x !== clamped.x || point.y !== clamped.y
+      ? makePolygonPoint(point)
+      : point;
+    if (isNearFirstVertex(closePoint)) {
+      executeCommand(COMMANDS.ANNOTATION_CREATE_POLYGON, { closePoint });
     } else if (
       interactionState.curveSegmentMode &&
       interactionState.currentPolygon.length > 0 &&
@@ -166,6 +199,9 @@ export function createAnnotationCreation({
   }
 
   function performAddDraftPoint({ point }) {
+    if (interactionState.currentPolygon.length === 0) {
+      interactionState.currentPolygonClass = captureClassChoice();
+    }
     interactionState.currentPolygon.push(
       makePolygonPoint(point, interactionState.currentCurveControl)
     );
@@ -192,8 +228,9 @@ export function createAnnotationCreation({
       }
       return copy;
     });
+    const classChoice = availableClass(interactionState.currentPolygonClass);
     const annotation = createPolygonAnnotation({
-      label: labels.polygon,
+      label: classChoice?.name || labels.polygon,
       color: getDefaultShapeColor(),
       points,
     });
@@ -201,15 +238,20 @@ export function createAnnotationCreation({
     const index = getAnnotationTypeIndex(annotationState.annotations, annotation.id);
     selectAnnotation(null);
     interactionState.currentPolygon = [];
+    interactionState.currentPolygonClass = null;
     interactionState.currentCurveControl = null;
     interactionState.curveSegmentMode = false;
     syncToolStrip();
-    openLabelEditor({
-      polygonIndex: index,
-      initialLabel: labels.polygon,
-      anchorImagePoint: anchor,
-      reason: "creation",
-    });
+    if (classChoice) {
+      rememberAnnotationLabel(annotationState, "polygon", classChoice.name);
+    } else {
+      openLabelEditor({
+        polygonIndex: index,
+        initialLabel: labels.polygon,
+        anchorImagePoint: anchor,
+        reason: "creation",
+      });
+    }
     redraw();
     return true;
   }

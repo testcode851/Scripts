@@ -11,6 +11,9 @@ import {
 import { rememberAnnotationLabel } from "../model/annotation-labels.js";
 import { createInteractionReset } from "../state/interaction-reset.js";
 import { hexToRgb, rgbToHex } from "../utils/colors.js";
+import { cloneCocoIdentity } from "../model/coco-identity.js";
+import { normalizeClassCatalog, validateCatalogAnnotations } from "../model/class-catalog.js";
+import { invalidateReview, isLocked, normalizeEditorMetadata } from "../model/annotation-review.js";
 
 /**
  * Owns document-level annotation mutations and the UI workflow around them.
@@ -37,7 +40,12 @@ export function createDocumentWorkflows(options) {
     resizeCanvasToImage,
     resetViewTransform,
     redraw,
+    redrawEditorState = redraw,
     alertFn = globalThis.alert,
+    getClassCatalog = () => null,
+    canAssignClass = () => true,
+    canChangeEditorState = () => true,
+    canEditAnnotation = annotation => !isLocked(annotation) && !annotation.editor?.hidden,
   } = options;
   const interactionReset = createInteractionReset(interactionState);
 
@@ -46,7 +54,7 @@ export function createDocumentWorkflows(options) {
     const annotation = reference.id
       ? getAnnotationById(annotationState.annotations, reference.id)
       : catalog.getAt(reference.type, Number(reference.index));
-    if (!annotation) return false;
+    if (!annotation || !canEditAnnotation(annotation)) return false;
 
     const index = getAnnotationTypeIndex(annotationState.annotations, annotation.id);
     catalog.normalizeLabels();
@@ -63,16 +71,73 @@ export function createDocumentWorkflows(options) {
     return true;
   }
 
-  function performRename({ annotationId, label }) {
+  function performRename({ annotationId, label }, { creation = false } = {}) {
     const annotation = getAnnotationById(annotationState.annotations, annotationId);
-    if (!annotation) return false;
+    if (!annotation || (creation ? isLocked(annotation) || annotation.editor?.hidden : !canEditAnnotation(annotation))) return false;
     const nextLabel = catalog.sanitizeLabel(label);
     if (annotation.label === nextLabel) {
       rememberAnnotationLabel(annotationState, annotation.type, nextLabel);
       return false;
     }
     annotation.label = nextLabel;
+    invalidateReview(annotation);
     rememberAnnotationLabel(annotationState, annotation.type, nextLabel);
+    return true;
+  }
+
+  // The initial tool label may not match the current view filter while its
+  // creation naming popup is open. Completing that popup still names the shape.
+  const performRenameCreated = request => performRename(request, { creation: true });
+
+  function validateClassAssignment({ annotationIds, classId, className } = {}) {
+    if (imageState.imageLoadStatus === "loading") {
+      throw new Error("Wait for the image to finish loading before assigning a class.");
+    }
+    if (!canAssignClass()) throw new Error("Finish the current operation before assigning a class.");
+    const savedCatalog = getClassCatalog();
+    if (!savedCatalog) throw new Error("Enable a class catalog before assigning a class.");
+    const classCatalog = normalizeClassCatalog(savedCatalog);
+    if (!classCatalog.enabled) throw new Error("Enable a class catalog before assigning a class.");
+    const choice = classCatalog.classes.find(item => item.id === classId && item.name === className);
+    if (!choice) throw new Error("The selected class is no longer available. Choose a class from the current catalog.");
+    if (!Array.isArray(annotationIds) || annotationIds.length === 0
+      || Array.from(annotationIds).some(id => typeof id !== "string" || !id.trim())
+      || new Set(annotationIds).size !== annotationIds.length) {
+      throw new Error("Select one or more shapes before assigning a class.");
+    }
+    const byId = new Map(annotationState.annotations.map(annotation => [annotation.id, annotation]));
+    const targets = annotationIds.map(id => byId.get(id));
+    if (targets.some(annotation => !annotation || !["polygon", "ellipse"].includes(annotation.type))) {
+      throw new Error("Some selected shapes are no longer available. Select the shapes again.");
+    }
+    if (targets.some(annotation => !canEditAnnotation(annotation))) {
+      throw new Error("Unlock and show all selected shapes before assigning a class.");
+    }
+    return { targets, choice };
+  }
+
+  function assignClass(request) {
+    try {
+      const { targets, choice } = validateClassAssignment(request);
+      if (targets.every(annotation => annotation.label === choice.name)) return false;
+      return executeCommand(COMMANDS.ANNOTATION_ASSIGN_CLASS, {
+        annotationIds: targets.map(annotation => annotation.id), classId: choice.id, className: choice.name,
+      });
+    } catch (error) {
+      alertFn(error.message);
+      return false;
+    }
+  }
+
+  function performAssignClass(request) {
+    const { targets, choice } = validateClassAssignment(request);
+    if (targets.every(annotation => annotation.label === choice.name)) return false;
+    for (const annotation of targets) {
+      if (annotation.label !== choice.name) invalidateReview(annotation);
+      annotation.label = choice.name;
+      rememberAnnotationLabel(annotationState, annotation.type, choice.name);
+    }
+    redraw();
     return true;
   }
 
@@ -83,7 +148,7 @@ export function createDocumentWorkflows(options) {
   function performSetSelectedColor({ hexColor }) {
     normalizeSelectedAnnotation();
     const selected = catalog.getSelectedAnnotation();
-    if (!selected) return false;
+    if (!selected || !canEditAnnotation(selected)) return false;
     const color = rgbToHex(hexToRgb(hexColor));
     if (selected.color === color) return false;
     annotationState.lastShapeColor = color;
@@ -124,6 +189,7 @@ export function createDocumentWorkflows(options) {
         label: selected.label,
         color: selected.color,
         points,
+        ...(selected.coco !== undefined ? { coco: cloneCocoIdentity(selected.coco, { preserveInstance: false }) } : {}),
       });
       annotationState.annotations.push(duplicate);
       clearTransientEditState();
@@ -155,6 +221,8 @@ export function createDocumentWorkflows(options) {
   }
 
   function performDeleteSelected() {
+    const target = catalog.getSelectedAnnotation();
+    if (target && !canEditAnnotation(target)) return false;
     closeLabelEditor();
     closeContextMenu();
     normalizeSelectedAnnotation();
@@ -195,6 +263,10 @@ export function createDocumentWorkflows(options) {
   }
 
   function performClearAll() {
+    if (annotationState.annotations.some(isLocked)) {
+      alertFn("Unlock all shapes before clearing the document.");
+      return false;
+    }
     closeLabelEditor();
     closeContextMenu();
     clearLabelColors();
@@ -207,25 +279,86 @@ export function createDocumentWorkflows(options) {
     return true;
   }
 
-  function loadAnnotationData(data) {
-    const imported = parseAnnotationDocument(data, {
+  function validateEditorState(request) {
+    if (imageState.imageLoadStatus === "loading" || !canChangeEditorState()) {
+      throw new Error("Finish the current operation before changing shape review controls.");
+    }
+    if (!request || typeof request.annotationId !== "string") throw new Error("Select a shape first.");
+    const annotation = getAnnotationById(annotationState.annotations, request.annotationId);
+    if (!annotation) throw new Error("The shape is no longer available.");
+    const next = { ...annotation.editor };
+    for (const key of ["hidden", "locked", "reviewStatus"]) {
+      if (Object.hasOwn(request, key)) next[key] = request[key];
+    }
+    const editor = normalizeEditorMetadata(next);
+    return { annotation, editor };
+  }
+
+  function setEditorState(request) {
+    try {
+      const { annotation, editor } = validateEditorState(request);
+      if (JSON.stringify(annotation.editor) === JSON.stringify(editor)) return false;
+      return executeCommand(COMMANDS.ANNOTATION_SET_EDITOR_STATE, { ...request });
+    } catch (error) {
+      alertFn(error.message);
+      return false;
+    }
+  }
+
+  function performSetEditorState(request) {
+    const { annotation, editor } = validateEditorState(request);
+    if (JSON.stringify(annotation.editor) === JSON.stringify(editor)) return false;
+    if (editor) annotation.editor = editor;
+    else delete annotation.editor;
+    if (editor?.hidden || editor?.locked) {
+      if (interactionState.activeVertex?.annotationId === annotation.id) interactionState.activeVertex = null;
+      for (const key of interactionState.selectedVertexKeys) {
+        if (key.startsWith(`${annotation.id}|`)) interactionState.selectedVertexKeys.delete(key);
+      }
+    }
+    redrawEditorState();
+    return true;
+  }
+
+  function loadAnnotationData(data, { preparedDocument } = {}) {
+    const imported = preparedDocument || parseAnnotationDocument(data, {
       currentImageName: imageState.imageName,
     });
+    // Reject before the history transaction so rollback cannot disturb active edits.
+    if (imageState.image && imported.imageSize && (
+      imported.imageSize.width !== imageState.image.width ||
+      imported.imageSize.height !== imageState.image.height
+    )) {
+      alertFn("The annotation dimensions do not match the loaded image. Load the matching image before importing these annotations.");
+      return false;
+    }
+    if (imported.annotations.some(annotation => annotation.coco)) {
+      validateCatalogAnnotations(getClassCatalog(), imported.annotations, { requireKnownLabels: true });
+    }
     return executeCommand(COMMANDS.DOCUMENT_REPLACE, { imported });
   }
 
   function performLoadAnnotationData({ imported }) {
+    // Measurements and calibration must refer to the loaded image's original pixels.
+    if (imageState.image && imported.imageSize && (
+      imported.imageSize.width !== imageState.image.width ||
+      imported.imageSize.height !== imageState.image.height
+    )) {
+      alertFn("The annotation dimensions do not match the loaded image. Load the matching image before importing these annotations.");
+      return false;
+    }
     closeLabelEditor();
     closeContextMenu();
     clearLabelColors();
     annotationState.annotations = imported.annotations;
+    imageState.calibration = imported.calibration || null;
     annotationState.lastPolygonLabel = imported.lastLabel;
     if (imported.imageSize) {
       imageState.imageSize = imported.imageSize;
       resizeCanvasToImage();
     }
     if (imported.imageName) imageState.imageName = imported.imageName;
-    interactionReset.clearPolygonDraft();
+    interactionReset.clearShapeDrafts();
     interactionReset.clearGeometryInteraction();
     clearVertexSelection();
     resetViewTransform();
@@ -235,15 +368,20 @@ export function createDocumentWorkflows(options) {
   }
 
   return {
+    assignClass,
     loadAnnotationData,
+    performAssignClass,
     performCancelCreated,
     performClearAll,
     performDeleteSelected,
     performDuplicateSelected,
     performLoadAnnotationData,
     performRename,
+    performRenameCreated,
     performSetSelectedColor,
+    performSetEditorState,
     requestRename,
     setSelectedColor,
+    setEditorState,
   };
 }

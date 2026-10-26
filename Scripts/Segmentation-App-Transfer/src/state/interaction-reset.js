@@ -7,6 +7,7 @@
 export function createInteractionReset(interactionState) {
   function clearPolygonDraft() {
     interactionState.currentPolygon = [];
+    interactionState.currentPolygonClass = null;
     interactionState.currentCurveControl = null;
     interactionState.curveSegmentMode = false;
   }

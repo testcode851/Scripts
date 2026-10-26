@@ -1,0 +1,108 @@
+/* Image queues use the existing application palette and square controls. */
+.project-navigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-bg);
+  font-size: .78rem;
+}
+.project-navigation button { white-space: nowrap; }
+#projectPosition { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.project-current-name { flex: 1; min-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-status { color: var(--text-subtle); font-size: .75rem; overflow-wrap: anywhere; }
+.project-status[data-error="true"] { color: #953b3b; }
+.project-navigation .project-status { max-width: 28%; }
+body[data-page="analytics"] .project-navigation { display: none; }
+.workspace { position: relative; }
+.project-drawer {
+  position: absolute;
+  grid-column: 2 / 3;
+  grid-row: 1 / 2;
+  inset: 0 auto auto 0;
+  width: 224px;
+  max-width: 100%;
+  height: 100%;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-white);
+  font-size: .78rem;
+  overflow: hidden;
+}
+.project-drawer-heading { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-bottom: 1px solid var(--border); background: var(--surface-strong); }
+.project-drawer-heading strong { flex: 1; }
+.project-drawer-actions { border-bottom: 1px solid var(--border); background: var(--surface); }
+.project-drawer-actions summary { padding: 7px 9px; cursor: pointer; }
+.project-drawer-actions > div { display: grid; gap: 5px; padding: 0 9px 9px; }
+.project-drawer-actions button { text-align: left; }
+#projectDrawerCollapse { padding: 0 7px; font-size: 1.2rem; line-height: 1.25; }
+.project-drawer-controls { display: grid; gap: 5px; padding: 9px; background: var(--surface); border-bottom: 1px solid var(--border); }
+.project-drawer input:not([type="file"]), .project-drawer select, .project-export-dialog select {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  padding: 5px 6px;
+  color: var(--text);
+  background: var(--surface-white);
+  font: inherit;
+}
+#projectAddImages { margin: 3px 0; }
+.project-image-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.project-image-entry { display: flex; align-items: stretch; border-bottom: 1px solid var(--separator); }
+.project-image-remove { flex: 0 0 28px; align-self: center; margin: 0 5px 0 0; padding: 2px 4px; font-size: 1rem; }
+.project-image-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  min-height: 66px;
+  padding: 8px;
+  text-align: left;
+  border: 0;
+  background: var(--surface-white);
+  font: inherit;
+}
+.project-image-row[aria-current="true"] { background: var(--primary); color: var(--surface-white); }
+.project-image-row[aria-current="true"] .project-image-detail { color: var(--selected-text-subtle); }
+.project-image-row:focus-visible { outline-offset: -3px; }
+.project-image-row:disabled { cursor: wait; opacity: .65; }
+.project-thumbnail { flex: 0 0 44px; width: 44px; height: 44px; object-fit: contain; border: 1px solid var(--border); background: var(--surface-canvas); }
+.project-thumbnail-placeholder { display: grid; place-items: center; color: var(--text-subtle); font-size: .7rem; }
+.project-image-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.project-image-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.project-image-detail { color: var(--text-subtle); font-size: .7rem; }
+.project-empty { padding: 12px; margin: 0; color: var(--text-subtle); }
+.project-drawer-footer { display: grid; gap: 5px; padding: 8px; background: var(--surface); border-top: 1px solid var(--border); }
+.project-export-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--border-strong); color: var(--text); background: var(--surface); font-size: .85rem; }
+.project-export-dialog::backdrop { background: var(--modal-overlay); }
+.project-export-dialog h2 { margin: 0; font-size: 1.1rem; }
+.project-export-dialog form { display: grid; gap: 10px; }
+.project-export-dialog p { margin: 0; color: var(--text-subtle); }
+.project-export-dialog fieldset { display: grid; gap: 8px; margin: 0; border: 1px solid var(--border); }
+.project-export-dialog .project-export-error { color: #953b3b; }
+.project-export-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.project-cleanup-dialog p { overflow-wrap: anywhere; }
+.project-cleanup-dialog .project-export-actions { flex-wrap: wrap; }
+@media (min-width: 1301px) {
+  body.has-image-project[data-page="annotation"] { grid-template-rows: auto auto auto minmax(0, 1fr); }
+}
+@media (min-width: 961px) and (max-width: 1300px) {
+  .project-drawer { max-height: min(75vh, 780px); }
+}
+@media (max-width: 960px) {
+  .project-drawer { grid-column: 1 / 2; grid-row: 2 / 3; max-height: min(68vh, 680px); }
+  .project-navigation { flex-wrap: wrap; }
+  .project-navigation .project-status { max-width: 100%; }
+}
+@media (max-width: 580px) {
+  .project-drawer { max-height: min(55vh, 420px); }
+  .project-current-name { flex-basis: calc(100% - 260px); }
+}

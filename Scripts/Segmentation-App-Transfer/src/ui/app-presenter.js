@@ -15,6 +15,8 @@ export function createAppPresenter(options) {
     renderLoadStatus,
     renderLabels,
     requestCanvasRender,
+    requestSelectionCanvasRender = requestCanvasRender,
+    onRedraw = () => {},
   } = options;
 
   function syncControlValues() {
@@ -67,6 +69,22 @@ export function createAppPresenter(options) {
     renderDomPanels();
     normalizeSelection();
     requestCanvasRender();
+    onRedraw();
+  }
+
+  // Pure shape selection changes the editor display, not measurement inputs.
+  function redrawSelection() {
+    renderDomPanels();
+    normalizeSelection();
+    requestSelectionCanvasRender();
+  }
+
+  // View/settings changes do not alter sidebar content or measurement inputs.
+  function redrawView() {
+    renderMetadata();
+    renderLoadStatus();
+    normalizeSelection();
+    requestCanvasRender();
   }
 
   function applySettings(settingsPatch, options = {}) {
@@ -80,12 +98,14 @@ export function createAppPresenter(options) {
       controls.snapPresetSelect.value = options.presetId;
     }
     syncAdjustmentLabels();
-    redraw();
+    redrawView();
   }
 
   return {
     applySettings,
     redraw,
+    redrawSelection,
+    redrawView,
     renderDomPanels,
     syncAdjustmentLabels,
     syncControlValues,

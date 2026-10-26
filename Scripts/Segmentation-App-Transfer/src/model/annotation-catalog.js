@@ -22,6 +22,7 @@ export function createAnnotationCatalog(options) {
     baseColors,
     colorPalette,
     colorAssignments = new Map(),
+    getReusableLabels = () => [],
   } = options;
 
   function sanitizeLabel(value) {
@@ -85,8 +86,8 @@ export function createAnnotationCatalog(options) {
     return colorAssignments.get(safeLabel);
   }
 
-  function getAnnotationColor(type, index) {
-    const annotation = getAt(type, index);
+  // Rendering can supply its current annotation instead of searching the document again.
+  function getAnnotationColor(type, index, annotation = getAt(type, index)) {
     const fallbackLabel = type === "ellipse" ? labels.ellipse : labels.polygon;
     const label = annotation?.label || fallbackLabel;
     return annotation?.color
@@ -94,15 +95,15 @@ export function createAnnotationCatalog(options) {
       : getColorForLabel(label);
   }
 
-  function getAnnotationColorHex(type, index) {
-    return rgbToHex(getAnnotationColor(type, index));
+  function getAnnotationColorHex(type, index, annotation) {
+    return rgbToHex(getAnnotationColor(type, index, annotation));
   }
 
-  function getBaseColor(type, index) {
+  function getBaseColor(type, index, annotation) {
     if (!Number.isInteger(index) || index < 0) {
       return type === "ellipse" ? baseColors.ellipse : baseColors.polygon;
     }
-    return getAnnotationColor(type, index);
+    return getAnnotationColor(type, index, annotation);
   }
 
   function normalizeLabels() {
@@ -118,10 +119,10 @@ export function createAnnotationCatalog(options) {
     );
   }
 
-  function getLabel(type, index) {
+  function getLabel(type, index, annotation = getAt(type, index)) {
     normalizeLabels();
     const fallback = type === "ellipse" ? labels.ellipse : labels.polygon;
-    return sanitizeLabel(getAt(type, index)?.label || fallback);
+    return sanitizeLabel(annotation?.label || fallback);
   }
 
   function getAnchorPoint(type, index) {
@@ -143,6 +144,9 @@ export function createAnnotationCatalog(options) {
       const label = sanitizeLabel(annotation.label);
       countByLabel.set(label, (countByLabel.get(label) || 0) + 1);
     });
+    for (const label of getReusableLabels()) {
+      if (!countByLabel.has(label)) countByLabel.set(label, 0);
+    }
     return [...countByLabel.entries()]
       .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .map(([label]) => label);

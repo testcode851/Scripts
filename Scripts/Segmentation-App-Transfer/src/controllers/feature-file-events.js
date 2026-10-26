@@ -6,9 +6,12 @@ export function bindFeatureFileEvents({
   alertFn,
   actions,
 }) {
+  let fileRequest = 0;
   listen(elements.imageInput, "change", (event) => {
     const [file] = event.target.files;
     if (!file) return;
+    fileRequest += 1;
+    actions.cancelAnnotationImport?.();
     if (file.type !== "image/png") {
       alertFn("Please upload a PNG image.");
       event.target.value = "";
@@ -22,8 +25,13 @@ export function bindFeatureFileEvents({
   listen(elements.jsonInput, "change", (event) => {
     const [file] = event.target.files;
     if (!file) return;
+    const request = ++fileRequest;
+    const importGeneration = actions.getImportGeneration?.();
+    const isCurrent = () => request === fileRequest && importGeneration === actions.getImportGeneration?.();
+    actions.cancelAnnotationImport?.();
     const reader = new FileReaderType();
-    reader.onload = () => {
+    reader.onload = async () => {
+      if (!isCurrent()) return;
       let data;
       try {
         data = JSON.parse(reader.result);
@@ -34,11 +42,15 @@ export function bindFeatureFileEvents({
       }
 
       try {
-        actions.loadAnnotationData(data);
+        await actions.loadAnnotationData(data);
       } catch (error) {
+        if (!isCurrent()) return;
         const message = error instanceof Error ? error.message : String(error);
         alertFn(`Could not import annotations: ${message}`);
       }
+    };
+    reader.onerror = () => {
+      if (isCurrent()) alertFn("Could not read the JSON file.");
     };
     reader.readAsText(file);
   });

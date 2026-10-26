@@ -25,6 +25,7 @@ export function createImageLoader({
   const { imageInput, emptyState } = elements;
   const interactionReset = createInteractionReset(interactionState);
   let activeRequestId = 0;
+  let pendingRollback = null;
 
   function hasAnnotationState() {
     return (
@@ -61,6 +62,11 @@ export function createImageLoader({
       return false;
     }
     modal.closeConfirm();
+    pendingRollback ||= {
+      image: { ...imageState },
+      annotations: annotationState.annotations,
+      labelColors: new Map(labelColorAssignments),
+    };
     clearAnnotations();
     return start(file);
   }
@@ -74,10 +80,31 @@ export function createImageLoader({
     if (typeof FileReaderType !== "function" || typeof ImageType !== "function") {
       throw new Error("Image loading requires FileReader and Image constructors.");
     }
+    pendingRollback ||= {
+      image: { ...imageState },
+      annotations: annotationState.annotations,
+      labelColors: new Map(labelColorAssignments),
+    };
     labelColorAssignments.clear();
     render.resetTimer();
     const requestId = ++activeRequestId;
     const isCurrentRequest = () => requestId === activeRequestId;
+    function fail(message, detail) {
+      if (!isCurrentRequest()) return;
+      const revision = imageState.revision;
+      Object.assign(imageState, pendingRollback.image, { revision: revision + 1 });
+      annotationState.annotations = pendingRollback.annotations;
+      labelColorAssignments.clear();
+      for (const [label, color] of pendingRollback.labelColors) labelColorAssignments.set(label, color);
+      pendingRollback = null;
+      render.setLoadState("error", 100, message);
+      render.metadata();
+      render.redraw();
+      render.onImageError?.(detail);
+      alertFn(detail);
+    }
+    imageState.calibration = null;
+    imageState.revision = (imageState.revision || 0) + 1;
     imageState.imageName = file.name || "";
     imageState.imageFileSizeBytes = Number.isFinite(file.size) ? file.size : null;
     imageState.imageFileType = file.type || "image/png";
@@ -89,6 +116,8 @@ export function createImageLoader({
       autoHideSuccess: false,
     });
     render.timer();
+
+    render.redraw();
 
     const reader = new FileReaderType();
     reader.onloadstart = () => {
@@ -110,16 +139,13 @@ export function createImageLoader({
       }
     };
     reader.onerror = () => {
-      if (!isCurrentRequest()) return;
-      render.setLoadState("error", 100, "Could not read the image file.");
-      alertFn("Could not read the selected PNG file.");
+      fail("Could not read the image file.", "Could not read the selected PNG file.");
     };
     reader.onload = (event) => {
       if (!isCurrentRequest()) return;
       const imageDataUrl = event.target?.result;
       if (typeof imageDataUrl !== "string") {
-        render.setLoadState("error", 100, "Image read failed.");
-        alertFn("Could not decode image file contents.");
+        fail("Image read failed.", "Could not decode image file contents.");
         return;
       }
       const image = new ImageType();
@@ -149,6 +175,7 @@ export function createImageLoader({
             autoHideSuccess: false,
           });
           await nextFrame();
+          if (!isCurrentRequest()) return;
           imageCache.install({
             image,
             equalizedImage,
@@ -164,21 +191,20 @@ export function createImageLoader({
           view.resetViewTransform();
           if (emptyState) emptyState.style.display = "none";
           render.metadata();
-          render.redraw();
           render.setLoadState("success", 100, "Image ready.");
+          render.onImageReady?.(file);
+          render.redraw();
           render.timer();
+          pendingRollback = null;
         } catch (error) {
           if (!isCurrentRequest()) return;
           const message =
             error instanceof Error ? error.message : String(error);
-          render.setLoadState("error", 100, "Image processing failed.");
-          alertFn(`Could not process image: ${message}`);
+          fail("Image processing failed.", `Could not process image: ${message}`);
         }
       };
       image.onerror = () => {
-        if (!isCurrentRequest()) return;
-        render.setLoadState("error", 100, "PNG decode failed.");
-        alertFn("Could not decode the selected PNG. The file may be corrupt.");
+        fail("PNG decode failed.", "Could not decode the selected PNG. The file may be corrupt.");
       };
       render.setLoadState("loading", 70, "Decoding PNG...", {
         autoHideSuccess: false,

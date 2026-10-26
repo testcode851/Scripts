@@ -6,13 +6,18 @@
 
   .tips-panel {
     grid-column: 1 / -1;
+    position: static;
+    height: auto;
+    max-height: none;
+    overflow-y: visible;
   }
 
-  #labelListUnique {
-    height: 140px;
+  .shape-list-panel {
+    flex: none;
   }
 
   #polygonLabelList {
+    flex: none;
     height: 240px;
   }
 }
@@ -22,8 +27,18 @@
     height: 100vh;
     min-height: 100vh;
     display: grid;
-    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     overflow: hidden;
+  }
+
+  body[data-page="analytics"] {
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  #analyticsPage {
+    width: 100%;
+    min-height: 0;
+    overflow: auto;
   }
 
   .workspace {
@@ -88,7 +103,6 @@
     min-height: 58vh;
   }
 
-  #labelListUnique,
   #polygonLabelList {
     height: 180px;
   }

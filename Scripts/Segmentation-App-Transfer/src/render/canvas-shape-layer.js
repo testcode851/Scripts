@@ -1,5 +1,6 @@
 import { clamp } from "../geometry/math.js";
 import { rgbToCss } from "../utils/colors.js";
+import { ellipseIntersectsViewport, polygonIntersectsViewport } from "./canvas-visibility.js";
 
 /** Build the contrast-adjusted stroke and fill used by annotation previews. */
 export function getMaskPreviewStyle(baseColor, maskContrast, fillAlpha = 0.12) {
@@ -40,7 +41,10 @@ export function createCanvasShapeLayer({
   function drawPolygon(points, options = {}) {
     if (points.length === 0) return;
     const overlayOpacity = options.opacity ?? settingsState.maskOpacity / 100;
-    const baseColor = options.baseColor || getPolygonBaseColor(options.polygonIndex);
+    const baseColor = options.baseColor || getPolygonBaseColor(options.polygonIndex, options.annotation);
+    // Resolve colors first: even offscreen labels must keep their palette order.
+    if (!polygonIntersectsViewport(points, options.viewport)) return;
+    if (options.regions && !options.regions.some(region => polygonIntersectsViewport(points, region))) return;
     const previewStyle = getMaskPreviewStyle(baseColor, settingsState.maskContrast);
     const isSelectedAnnotation = Boolean(options.selectedAnnotation);
     context.save();
@@ -78,24 +82,27 @@ export function createCanvasShapeLayer({
     context.stroke();
     if (!options.noVertices) {
       context.globalAlpha = 1;
-      points.forEach((point, index) => {
-        const scaledPoint = scalePoint(point);
+      let handleColor;
+      scaledPoints.forEach((scaledPoint, index) => {
         const isActive =
           interactionState.activeVertex?.polygonIndex === options.polygonIndex &&
           interactionState.activeVertex?.pointIndex === index;
-        const isSelected = isVertexSelected(options.polygonIndex, index);
+        // Saved shapes already provide their owner; drafts retain index-based selection.
+        const isSelected = options.annotation
+          ? interactionState.selectedVertexKeys.has(options.annotation.id ? `${options.annotation.id}|${index}` : "")
+          : isVertexSelected(options.polygonIndex, index);
         context.beginPath();
         context.arc(scaledPoint.x, scaledPoint.y, isActive ? 6 : 4, 0, Math.PI * 2);
         context.fillStyle = isActive
           ? "#16a34a"
           : isSelected
             ? "#0ea5e9"
-            : rgbToCss(baseColor);
+            : (handleColor ??= rgbToCss(baseColor));
         context.fill();
       });
-      points.forEach((point, index) => {
+      scaledPoints.forEach((point, index) => {
         if (!point.curveFrom) return;
-        const controlPoint = scalePoint(point.curveFrom);
+        const controlPoint = point.curveFrom;
         const isActive =
           interactionState.activeVertex?.polygonIndex === options.polygonIndex &&
           interactionState.activeVertex?.pointIndex === index &&
@@ -115,9 +122,11 @@ export function createCanvasShapeLayer({
   }
 
   function drawEllipse(ellipse, options = {}) {
-    const scaledEllipse = scaleEllipse(ellipse);
     const overlayOpacity = options.opacity ?? settingsState.maskOpacity / 100;
     const baseColor = options.baseColor || ellipseBaseColor;
+    if (!ellipseIntersectsViewport(ellipse, options.viewport)) return;
+    if (options.regions && !options.regions.some(region => ellipseIntersectsViewport(ellipse, region))) return;
+    const scaledEllipse = scaleEllipse(ellipse);
     const previewStyle = getMaskPreviewStyle(baseColor, settingsState.maskContrast);
     const isSelectedAnnotation = Boolean(options.selectedAnnotation);
     context.save();
@@ -146,13 +155,14 @@ export function createCanvasShapeLayer({
         : options.ellipseIndex != null || interactionState.vertexEditEnabled);
     if (showHandles) {
       context.globalAlpha = 1;
+      let handleColor;
       getEllipseHandles(scaledEllipse).forEach((handle) => {
         const isActive =
           interactionState.activeVertex?.ellipseIndex === options.ellipseIndex &&
           interactionState.activeVertex?.handleType === handle.type;
         context.beginPath();
         context.arc(handle.x, handle.y, isActive ? 6 : 4, 0, Math.PI * 2);
-        context.fillStyle = isActive ? "#16a34a" : rgbToCss(baseColor);
+        context.fillStyle = isActive ? "#16a34a" : (handleColor ??= rgbToCss(baseColor));
         context.fill();
       });
     }

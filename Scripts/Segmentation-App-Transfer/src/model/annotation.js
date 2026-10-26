@@ -1,4 +1,6 @@
 import { clonePolygonPoint } from "../geometry/polygon.js";
+import { cloneCurveSampling } from "../geometry/curve-sampling.js";
+import { cloneCocoIdentity } from "./coco-identity.js";
 
 let fallbackIdSequence = 0;
 
@@ -10,7 +12,7 @@ export function createAnnotationId(type = "annotation") {
   return `${type}-${Date.now().toString(36)}-${fallbackIdSequence.toString(36)}`;
 }
 
-export function createPolygonAnnotation({ id, label = "polygon", color = "", points = [] } = {}) {
+export function createPolygonAnnotation({ id, label = "polygon", color = "", points = [], curveSampling, coco } = {}) {
   if (!Array.isArray(points)) {
     throw new TypeError("Polygon points must be an array.");
   }
@@ -19,8 +21,10 @@ export function createPolygonAnnotation({ id, label = "polygon", color = "", poi
     type: "polygon",
     label,
     color,
+    ...(coco !== undefined ? { coco: cloneCocoIdentity(coco) } : {}),
     geometry: {
       points: points.map(clonePolygonPoint),
+      ...(curveSampling?.length ? { curveSampling: cloneCurveSampling(curveSampling) } : {}),
     },
   };
 }
@@ -43,6 +47,8 @@ export function cloneAnnotation(annotation, { preserveId = true } = {}) {
       label: annotation.label,
       color: annotation.color,
       points: annotation.geometry?.points || [],
+      curveSampling: annotation.geometry?.curveSampling,
+      ...(annotation.coco !== undefined ? { coco: cloneCocoIdentity(annotation.coco, { preserveInstance: preserveId }) } : {}),
     });
   }
   if (annotation?.type === "ellipse") {

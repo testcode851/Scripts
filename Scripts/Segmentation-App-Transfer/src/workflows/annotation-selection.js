@@ -1,5 +1,5 @@
 import { clamp } from "../geometry/math.js";
-import { flattenPolygon } from "../geometry/polygon.js";
+import { flattenPolygon, getClosestPointOnQuadratic } from "../geometry/polygon.js";
 import {
   getAnnotationAtTypeIndex,
   getAnnotationById,
@@ -15,6 +15,9 @@ export function createAnnotationSelection({
   interactionState,
   coordinates,
   redraw,
+  isAnnotationVisible = annotation => !annotation.editor?.hidden,
+  isAnnotationEditable = annotation => !annotation.editor?.hidden && !annotation.editor?.locked,
+  matchesSelectionFilter = () => true,
 }) {
   const interactionReset = createInteractionReset(interactionState);
   const { scaleEllipse, scalePoint, unscalePoint } = coordinates;
@@ -49,8 +52,13 @@ export function createAnnotationSelection({
   }
 
   function normalizeSelectedAnnotation() {
-    if (interactionState.selectedAnnotationId && !selected()) {
+    const annotation = selected();
+    if (interactionState.selectedAnnotationId && !annotation) {
       interactionState.selectedAnnotationId = null;
+    } else if (annotation && !matchesSelectionFilter(annotation)) {
+      interactionState.selectedAnnotationId = null;
+      interactionState.activeVertex = null;
+      clearVertexSelection();
     }
   }
 
@@ -108,7 +116,8 @@ export function createAnnotationSelection({
   }
 
   function cycleAnnotationSelection(direction = 1) {
-    const sequence = getAnnotationSequence();
+    const visibleIds = new Set(annotationState.annotations.filter(isAnnotationVisible).map(annotation => annotation.id));
+    const sequence = getAnnotationSequence().filter(entry => visibleIds.has(entry.id));
     if (sequence.length === 0) {
       selectAnnotation(null);
       redraw();
@@ -152,18 +161,25 @@ export function createAnnotationSelection({
   function findAnnotationAtPoint(canvasPoint) {
     const hits = [];
     polygons().forEach((annotation, index) => {
+      if (!isAnnotationVisible(annotation)) return;
       const polygon = flattenPolygon(annotation.geometry.points).map(scalePoint);
       if (polygon.length >= 3 && isPointInPolygon(canvasPoint, polygon)) {
         hits.push({ id: annotation.id, type: "polygon", index });
       }
     });
     ellipses().forEach((annotation, index) => {
+      if (!isAnnotationVisible(annotation)) return;
       const ellipse = scaleEllipse(annotation.geometry);
+      const dx = canvasPoint.x - ellipse.cx;
+      const dy = canvasPoint.y - ellipse.cy;
+      const cos = Math.cos(ellipse.rotation || 0);
+      const sin = Math.sin(ellipse.rotation || 0);
+      const localX = dx * cos + dy * sin;
+      const localY = -dx * sin + dy * cos;
       if (
         ellipse.rx > 0 &&
         ellipse.ry > 0 &&
-        ((canvasPoint.x - ellipse.cx) / ellipse.rx) ** 2 +
-          ((canvasPoint.y - ellipse.cy) / ellipse.ry) ** 2 <=
+        (localX / ellipse.rx) ** 2 + (localY / ellipse.ry) ** 2 <=
           1.05
       ) {
         hits.push({ id: annotation.id, type: "ellipse", index });
@@ -175,6 +191,7 @@ export function createAnnotationSelection({
   function findVertexAtPoint(canvasPoint) {
     const threshold = 10;
     for (const [polygonIndex, annotation] of polygons().entries()) {
+      if (!isAnnotationVisible(annotation) || !isAnnotationEditable(annotation)) continue;
       for (const [pointIndex, point] of annotation.geometry.points.entries()) {
         if (point.curveFrom) {
           const control = scalePoint(point.curveFrom);
@@ -211,6 +228,7 @@ export function createAnnotationSelection({
       }
     }
     for (const [ellipseIndex, annotation] of ellipses().entries()) {
+      if (!isAnnotationVisible(annotation) || !isAnnotationEditable(annotation)) continue;
       for (const handle of getEllipseHandles(scaleEllipse(annotation.geometry))) {
         if (Math.hypot(handle.x - canvasPoint.x, handle.y - canvasPoint.y) <= threshold) {
           return { annotationId: annotation.id, ellipseIndex, handleType: handle.type };
@@ -224,10 +242,29 @@ export function createAnnotationSelection({
     let best = null;
     let bestDistance = 10;
     polygons().forEach((annotation, polygonIndex) => {
+      if (!isAnnotationVisible(annotation) || !isAnnotationEditable(annotation)) return;
       const points = annotation.geometry.points;
       points.forEach((point, pointIndex) => {
         const start = scalePoint(point);
-        const end = scalePoint(points[(pointIndex + 1) % points.length]);
+        const endPoint = points[(pointIndex + 1) % points.length];
+        const end = scalePoint(endPoint);
+        if (endPoint.curveFrom) {
+          const control = scalePoint(endPoint.curveFrom);
+          if (start.x === end.x && start.y === end.y && start.x === control.x && start.y === control.y) return;
+          const nearest = getClosestPointOnQuadratic(start, control, end, canvasPoint);
+          const distance = Math.hypot(canvasPoint.x - nearest.point.x, canvasPoint.y - nearest.point.y);
+          if (distance < bestDistance) {
+            bestDistance = distance;
+            best = {
+              annotationId: annotation.id,
+              polygonIndex,
+              insertIndex: pointIndex + 1,
+              projectedPoint: unscalePoint(nearest.point),
+              curveT: nearest.t,
+            };
+          }
+          return;
+        }
         const dx = end.x - start.x;
         const dy = end.y - start.y;
         const lengthSquared = dx * dx + dy * dy;
@@ -268,6 +305,7 @@ export function createAnnotationSelection({
     const maxY = Math.max(box.start.y, box.end.y);
     const hits = [];
     polygons().forEach((annotation, polygonIndex) => {
+      if (!isAnnotationVisible(annotation) || !isAnnotationEditable(annotation)) return;
       annotation.geometry.points.forEach((point, pointIndex) => {
         const scaled = scalePoint(point);
         if (

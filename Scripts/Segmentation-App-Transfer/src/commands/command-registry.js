@@ -37,6 +37,7 @@ export function createCommandRegistry(initialCommands = {}, options = {}) {
         command.mutates && command.history && history?.transaction
           ? history.transaction(run, { record: command.history })
           : run();
+      if (command.mutates && result !== false) options.onMutation?.(name);
       return result !== false;
     },
   };

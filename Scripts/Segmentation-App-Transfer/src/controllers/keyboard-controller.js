@@ -4,6 +4,7 @@ import { COMMANDS } from "../commands/command-names.js";
 export function createKeyboardController(options) {
   const {
     target,
+    isEnabled = () => true,
     interactionState,
     commandRegistry,
     isEditableTarget,
@@ -25,6 +26,7 @@ export function createKeyboardController(options) {
   } = options;
 
   function handleKeyDown(event) {
+    if (!isEnabled()) return;
     const isFormField = isEditableTarget(event.target);
     const isQuestionShortcut = event.key === "?" || (event.key === "/" && event.shiftKey);
 
@@ -79,12 +81,18 @@ export function createKeyboardController(options) {
 
     if ((event.ctrlKey || event.metaKey) && !event.altKey) {
       const key = event.key.toLowerCase();
-      if (key === "z") {
+      const isTextEditingTarget = isFormField && (
+        event.target?.isContentEditable ||
+        event.target?.tagName === "TEXTAREA" ||
+        (event.target?.tagName === "INPUT" &&
+          ["text", "search", "email", "password", "tel", "url", "number"].includes(event.target.type || "text"))
+      );
+      if (key === "z" && !isTextEditingTarget) {
         event.preventDefault();
         commandRegistry.execute(event.shiftKey ? COMMANDS.REDO : COMMANDS.UNDO);
         return;
       }
-      if (key === "y") {
+      if (key === "y" && !isTextEditingTarget) {
         event.preventDefault();
         commandRegistry.execute(COMMANDS.REDO);
         return;

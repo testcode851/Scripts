@@ -1,4 +1,4 @@
-export function createSnapshotHistory({ capture, restore, maxEntries = 50, onRestore = () => {} }) {
+export function createSnapshotHistory({ capture, restore, maxEntries = 50, onRestore = () => {}, canRestore = () => true }) {
   if (typeof capture !== "function" || typeof restore !== "function") {
     throw new TypeError("History requires capture and restore functions.");
   }
@@ -46,14 +46,14 @@ export function createSnapshotHistory({ capture, restore, maxEntries = 50, onRes
       }
     },
     undo() {
-      if (undoStack.length === 0) return false;
+      if (!canRestore() || undoStack.length === 0) return false;
       redoStack.push(capture());
       restore(undoStack.pop());
       onRestore();
       return true;
     },
     redo() {
-      if (redoStack.length === 0) return false;
+      if (!canRestore() || redoStack.length === 0) return false;
       undoStack.push(capture());
       restore(redoStack.pop());
       onRestore();
@@ -69,10 +69,10 @@ export function createSnapshotHistory({ capture, restore, maxEntries = 50, onRes
       return true;
     },
     get canUndo() {
-      return undoStack.length > 0;
+      return canRestore() && undoStack.length > 0;
     },
     get canRedo() {
-      return redoStack.length > 0;
+      return canRestore() && redoStack.length > 0;
     },
     get undoDepth() {
       return undoStack.length;

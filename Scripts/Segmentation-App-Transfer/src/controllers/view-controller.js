@@ -65,6 +65,7 @@ export function createViewController(options) {
 
   function resizeCanvasToImage() {
     if (!imageState.imageSize) return;
+    if (!canvasWrap.clientWidth || !canvasWrap.clientHeight) return;
     const padding = 32;
     const availableWidth = Math.max(1, canvasWrap.clientWidth - padding);
     const availableHeight = Math.max(1, canvasWrap.clientHeight - padding);
@@ -136,13 +137,17 @@ export function createViewController(options) {
     ) {
       return false;
     }
+    const previousOffsetX = viewState.viewOffsetX;
+    const previousOffsetY = viewState.viewOffsetY;
     const currentPoint = getCanvasPoint(event);
     viewState.viewOffsetX =
       interactionState.panStartOffset.x + (currentPoint.x - interactionState.panStartPoint.x);
     viewState.viewOffsetY =
       interactionState.panStartOffset.y + (currentPoint.y - interactionState.panStartPoint.y);
     constrainViewTransform();
-    redraw();
+    if (viewState.viewOffsetX !== previousOffsetX || viewState.viewOffsetY !== previousOffsetY) {
+      redraw();
+    }
     return true;
   }
 

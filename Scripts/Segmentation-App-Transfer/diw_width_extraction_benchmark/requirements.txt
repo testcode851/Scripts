@@ -1,0 +1,19 @@
+# Minimal dependencies for the DIW strand-width extraction benchmark.
+#
+# This is deliberately much smaller than the parent pdtools package, which also
+# pulls in torch, sagemaker, pymongo, dbComm, fil_finder and wandb. NONE of those
+# are needed here: the benchmark generates every test image from code and does no
+# deep learning, no database access and no cloud I/O.
+#
+# Lower bounds are conservative. The exact versions this bundle was verified
+# against are listed in the comment on each line.
+
+numpy>=1.22          # verified 2.2.6
+scipy>=1.7           # verified 1.16.2
+scikit-image>=0.19   # verified 0.25.2
+pillow>=9.0          # verified 11.2.1
+matplotlib>=3.5      # verified 3.10.6
+pytest>=7.0          # verified 9.0.3  (only needed for the test suite)
+
+# Verified on Python 3.12.12, macOS arm64.
+# Python >=3.9 should work; the code uses no version-specific syntax.

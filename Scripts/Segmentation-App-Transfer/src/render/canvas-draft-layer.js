@@ -27,7 +27,12 @@ export function createCanvasDraftLayer({
 
   function drawPolygonDraft() {
     if (interactionState.currentPolygon.length === 0) return;
-    const cursorPoint = interactionState.cursorImagePos;
+    const rawCursorPoint = interactionState.cursorImagePos;
+    const clampedCursor = rawCursorPoint && coordinates.clampPointToImage(rawCursorPoint);
+    const outsidePreview = rawCursorPoint && (
+      rawCursorPoint.x !== clampedCursor.x || rawCursorPoint.y !== clampedCursor.y
+    ) ? createPreviewPolygonPoint(rawCursorPoint, interactionState.currentCurveControl) : null;
+    const cursorPoint = outsidePreview || rawCursorPoint;
     const readyToClose =
       cursorPoint &&
       interactionState.currentPolygon.length >= 3 &&
@@ -70,7 +75,7 @@ export function createCanvasDraftLayer({
       drawPolygon(
         [
           ...interactionState.currentPolygon,
-          createPreviewPolygonPoint(cursorPoint, interactionState.currentCurveControl),
+          outsidePreview || createPreviewPolygonPoint(rawCursorPoint, interactionState.currentCurveControl),
         ],
         {
           closed: true,

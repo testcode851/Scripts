@@ -14,6 +14,7 @@ export function createToolController(options) {
     clearVertexSelection,
     syncCanvasCursor,
     redraw,
+    onDocumentChange = () => {},
   } = options;
 
   const interactionReset = createInteractionReset(interactionState);
@@ -49,6 +50,10 @@ export function createToolController(options) {
   }
 
   function setTool(tool) {
+    const clearsFixedDraft = interactionState.currentPolygon.length > 0
+      || Boolean(interactionState.currentCurveControl);
+    const endsGeometryEdit = interactionState.isDrawing
+      && Boolean(interactionState.activeVertex || interactionState.activeAnnotationDrag);
     closeCanvasLabelEditor();
     closeCanvasContextMenu();
     interactionState.tool = tool || null;
@@ -59,10 +64,13 @@ export function createToolController(options) {
     syncCanvasCursor();
     syncToolStripUI();
     redraw();
+    if (clearsFixedDraft || endsGeometryEdit) onDocumentChange();
   }
 
   function cancelActiveShapePlacement(options = {}) {
     if (interactionState.vertexEditEnabled) return false;
+    const clearsFixedDraft = interactionState.currentPolygon.length > 0
+      || Boolean(interactionState.currentCurveControl);
     const hasDraftShape =
       interactionState.currentPolygon.length > 0 ||
       Boolean(interactionState.currentCurveControl) ||
@@ -80,6 +88,7 @@ export function createToolController(options) {
     syncCanvasCursor();
     syncToolStripUI();
     redraw();
+    if (clearsFixedDraft) onDocumentChange();
     return true;
   }
 
@@ -88,21 +97,29 @@ export function createToolController(options) {
       setTool(null);
       return;
     }
+    const endsGeometryEdit = interactionState.vertexEditEnabled && interactionState.isDrawing
+      && Boolean(interactionState.activeVertex || interactionState.activeAnnotationDrag);
+    const clearsFixedDraft = interactionState.currentPolygon.length > 0
+      || Boolean(interactionState.currentCurveControl);
     if (interactionState.vertexEditEnabled) {
       interactionState.vertexEditEnabled = false;
       interactionReset.clearGeometryInteraction();
       clearVertexSelection();
     }
     setTool(requestedTool);
+    if (endsGeometryEdit && !clearsFixedDraft) onDocumentChange();
   }
 
   function toggleVertexEdit() {
+    const endsGeometryEdit = interactionState.isDrawing
+      && Boolean(interactionState.activeVertex || interactionState.activeAnnotationDrag);
     interactionState.vertexEditEnabled = !interactionState.vertexEditEnabled;
     interactionReset.clearGeometryInteraction();
     interactionReset.stopDrawing();
     if (!interactionState.vertexEditEnabled) clearVertexSelection();
     syncToolStripUI();
     redraw();
+    if (endsGeometryEdit) onDocumentChange();
   }
 
   function bind() {

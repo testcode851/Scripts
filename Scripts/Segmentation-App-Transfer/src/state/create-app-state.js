@@ -5,6 +5,8 @@ export function createAppState(defaultSettings) {
       image: null,
       imageName: "",
       imageSize: null,
+      calibration: null,
+      revision: 0,
       imageFileSizeBytes: null,
       imageFileType: "",
       imageLastModified: null,
@@ -29,6 +31,7 @@ export function createAppState(defaultSettings) {
     interaction: {
       tool: "polygon",
       currentPolygon: [],
+      currentPolygonClass: null,
       currentCurveControl: null,
       curveSegmentMode: false,
       ellipseDraft: null,
@@ -59,7 +62,9 @@ export function createAppState(defaultSettings) {
       outputFormat: "llnl",
     },
     ui: {
+      activePage: "annotation",
       activeLabelEdit: null,
+      annotationClassFilter: null,
     },
   };
 

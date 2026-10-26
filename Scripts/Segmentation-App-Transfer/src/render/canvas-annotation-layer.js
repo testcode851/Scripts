@@ -1,12 +1,15 @@
 import {
-  getAnnotationAtTypeIndex,
   getAnnotationById,
-  getAnnotationTypeIndex,
   getAnnotationsByType,
 } from "../model/annotation.js";
+import { getCanvasViewport } from "./canvas-visibility.js";
+import { isAnnotationVisible } from "../model/annotation-visibility.js";
 
 /** Paint saved annotations and the selected-polygon emphasis layer. */
 export function createCanvasAnnotationLayer({
+  canvas,
+  context,
+  coordinates,
   annotationState,
   interactionState,
   settingsState,
@@ -16,7 +19,8 @@ export function createCanvasAnnotationLayer({
   getEllipseBaseColor,
   polygonBaseColor,
 }) {
-  function drawAnnotations() {
+  function drawAnnotations(regions) {
+    const viewport = getCanvasViewport(canvas, coordinates, context);
     const creationPreviewPolygonIndex =
       uiState.activeLabelEdit?.reason === "creation" &&
       uiState.activeLabelEdit?.annotationType !== "ellipse" &&
@@ -25,13 +29,16 @@ export function createCanvasAnnotationLayer({
         : -1;
     const polygons = getAnnotationsByType(annotationState.annotations, "polygon");
     polygons.forEach((annotation, index) => {
+      if (!isAnnotationVisible(annotation, uiState.annotationClassFilter)) return;
       drawPolygon(annotation.geometry.points, {
+        viewport,
+        regions,
         closed: true,
         polygonIndex: index,
+        annotation,
+        ...(annotation.editor?.locked ? { noVertices: true } : {}),
         opacity: settingsState.maskOpacity / 100,
-        selectedAnnotation:
-          getAnnotationAtTypeIndex(annotationState.annotations, "polygon", index)?.id ===
-          interactionState.selectedAnnotationId,
+        selectedAnnotation: annotation.id === interactionState.selectedAnnotationId,
         baseColor: index === creationPreviewPolygonIndex ? polygonBaseColor : null,
       });
     });
@@ -40,15 +47,15 @@ export function createCanvasAnnotationLayer({
       annotationState.annotations,
       interactionState.selectedAnnotationId
     );
-    if (selectedAnnotation?.type === "polygon") {
+    if (selectedAnnotation?.type === "polygon" && isAnnotationVisible(selectedAnnotation, uiState.annotationClassFilter)) {
       const selectedPolygon = selectedAnnotation.geometry.points;
       if (Array.isArray(selectedPolygon) && selectedPolygon.length > 0) {
         drawPolygon(selectedPolygon, {
+          viewport,
+          regions,
           closed: true,
-          polygonIndex: getAnnotationTypeIndex(
-            annotationState.annotations,
-            selectedAnnotation.id
-          ),
+          polygonIndex: polygons.indexOf(selectedAnnotation),
+          annotation: selectedAnnotation,
           opacity: 1,
           stroke: "#0284c7",
           fill: "rgba(2, 132, 199, 0.08)",
@@ -60,14 +67,15 @@ export function createCanvasAnnotationLayer({
 
     getAnnotationsByType(annotationState.annotations, "ellipse").forEach(
       (annotation, index) => {
+        if (!isAnnotationVisible(annotation, uiState.annotationClassFilter)) return;
         drawEllipse(annotation.geometry, {
+          viewport,
+          regions,
           opacity: settingsState.maskOpacity / 100,
-          selectedAnnotation:
-            getAnnotationAtTypeIndex(annotationState.annotations, "ellipse", index)?.id ===
-            interactionState.selectedAnnotationId,
+          selectedAnnotation: annotation.id === interactionState.selectedAnnotationId,
           ellipseIndex: index,
-          baseColor: getEllipseBaseColor(index),
-          showHandles: true,
+          baseColor: getEllipseBaseColor(index, annotation),
+          showHandles: !annotation.editor?.locked,
         });
       }
     );

@@ -18,6 +18,7 @@ export function createAnnotationTimer({
   now = () => Date.now(),
   setIntervalFn = setInterval,
   clearIntervalFn = clearInterval,
+  onChange = () => {},
 }) {
   const {
     annotationTimerValue,
@@ -76,6 +77,7 @@ export function createAnnotationTimer({
     stopInterval();
     intervalId = setIntervalFn(render, 1000);
     render();
+    onChange();
   }
 
   function stop(options = {}) {
@@ -84,6 +86,9 @@ export function createAnnotationTimer({
       return;
     }
     const stoppedAt = now();
+    const wasRunning = annotationState.annotationTimerRunning;
+    const previousLastStarted = annotationState.annotationLastStartedMs;
+    const previousEnded = annotationState.annotationEndedAt;
     if (annotationState.annotationTimerRunning) {
       annotationState.annotationElapsedMs = getElapsedMs(stoppedAt);
     }
@@ -94,9 +99,15 @@ export function createAnnotationTimer({
       annotationState.annotationEndedAt = new Date(stoppedAt).toISOString();
     }
     render();
+    if (wasRunning || previousLastStarted !== null || previousEnded !== annotationState.annotationEndedAt) onChange();
   }
 
   function reset() {
+    const changed = annotationState.annotationTimerRunning !== false
+      || annotationState.annotationStartedAt !== null
+      || annotationState.annotationEndedAt !== null
+      || annotationState.annotationElapsedMs !== 0
+      || annotationState.annotationLastStartedMs !== null;
     stopInterval();
     annotationState.annotationTimerRunning = false;
     annotationState.annotationStartedAt = null;
@@ -104,6 +115,7 @@ export function createAnnotationTimer({
     annotationState.annotationElapsedMs = 0;
     annotationState.annotationLastStartedMs = null;
     render();
+    if (changed) onChange();
   }
 
   function getMetadata() {

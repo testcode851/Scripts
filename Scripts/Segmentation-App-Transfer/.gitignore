@@ -1,0 +1,5 @@
+# Local runtimes and generated Python test caches.
+.venv/
+__pycache__/
+.pytest_cache/
+node_modules/

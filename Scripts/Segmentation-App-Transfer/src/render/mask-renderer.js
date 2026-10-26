@@ -1,4 +1,5 @@
 import { flattenPolygon } from "../geometry/polygon.js";
+import { getSamplingPoints } from "../geometry/curve-sampling.js";
 import { getAnnotationsByType } from "../model/annotation.js";
 
 /** Draw one flattened polygon path into a mask context. */
@@ -64,7 +65,7 @@ export function createMaskRenderer({ documentRoot }) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.fillStyle = inverted ? "black" : "white";
     getAnnotationsByType(annotations, "polygon").forEach((annotation) => {
-      drawMaskPolygon(context, annotation.geometry.points);
+      drawMaskPolygon(context, getSamplingPoints(annotation.geometry));
     });
     getAnnotationsByType(annotations, "ellipse").forEach((annotation) => {
       drawMaskEllipse(context, annotation.geometry);

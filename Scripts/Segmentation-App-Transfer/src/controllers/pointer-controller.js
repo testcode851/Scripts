@@ -8,6 +8,7 @@ import { createListenerLifecycle } from "../utils/listener-lifecycle.js";
 export function createPointerController(options) {
   const {
     canvas,
+    canvasWrap,
     documentTarget,
     imageState,
     interactionState,
@@ -33,6 +34,7 @@ export function createPointerController(options) {
     selectSingleVertex,
     findAnnotationAtPoint,
     startAnnotationDrag,
+    canDragAnnotation = () => true,
     addPolygonPoint,
     startRectangle,
     startEllipse,
@@ -134,6 +136,14 @@ export function createPointerController(options) {
       interactionState.selectionMode = selectionMode;
       if (selectionMode === "replace") {
         const annotationHit = findAnnotationAtPoint(canvasPoint);
+        if (annotationHit && !canDragAnnotation(annotationHit)) {
+          selectAnnotation(annotationHit);
+          clearVertexSelection();
+          interactionState.selectionBox = null;
+          interactionState.isDrawing = false;
+          redraw();
+          return;
+        }
         if (annotationHit && startAnnotationDrag(annotationHit, view.getImagePoint(event))) return;
         selectAnnotation(null);
         clearVertexSelection();
@@ -165,8 +175,32 @@ export function createPointerController(options) {
     }
   }
 
-  function handleCanvasPointerLeave() {
+  function canContinuePolygon() {
+    return Boolean(
+      imageState.image &&
+      interactionState.tool === tools.polygon &&
+      interactionState.currentPolygon.length > 0 &&
+      !interactionState.vertexEditEnabled &&
+      !interactionState.panModeEnabled &&
+      !interactionState.isPanning
+    );
+  }
+
+  function handleWorkspacePointerMove(event) {
+    if (event.target !== canvasWrap || !canContinuePolygon()) return;
+    if (activePointerId != null && event.pointerId !== activePointerId) return;
+    handleCanvasPointerMove(event);
+  }
+
+  function handleWorkspacePointerDown(event) {
+    if (event.target !== canvasWrap || event.button !== 0 || !canContinuePolygon()) return;
+    if (isCanvasLabelEditorOpen() || isCanvasContextMenuOpen()) return;
+    handlePointerDown(event);
+  }
+
+  function handleCanvasPointerLeave(event) {
     if (activePointerId != null) return;
+    if (canvasWrap && event.relatedTarget === canvasWrap && canContinuePolygon()) return;
     interactionState.cursorImagePos = null;
     if (interactionState.tool === tools.polygon && interactionState.currentPolygon.length > 0) {
       redraw();
@@ -242,6 +276,9 @@ export function createPointerController(options) {
     listen(canvas, "pointerleave", handleCanvasPointerLeave);
     listen(canvas, "contextmenu", handleContextMenu);
     listen(canvas, "auxclick", preventMiddleAuxClick);
+    listen(canvasWrap, "pointermove", handleWorkspacePointerMove);
+    listen(canvasWrap, "pointerdown", handleWorkspacePointerDown);
+    listen(canvasWrap, "pointerleave", handleCanvasPointerLeave);
     listen(documentTarget, "pointermove", handleDocumentPointerMove);
     listen(documentTarget, "pointerup", handlePointerEnd);
     listen(documentTarget, "pointercancel", handlePointerEnd);

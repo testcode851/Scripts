@@ -14,8 +14,15 @@
     <link rel="stylesheet" href="styles/panels.css" />
     <link rel="stylesheet" href="styles/dialogs.css" />
     <link rel="stylesheet" href="styles/responsive.css" />
+    <link rel="stylesheet" href="styles/analytics.css" />
+    <link rel="stylesheet" href="styles/projects.css" />
   </head>
-  <body>
+  <body data-page="annotation">
+    <nav class="app-page-nav" role="tablist" aria-label="Application pages">
+      <span class="app-page-brand">Segmentation Annotator</span>
+      <button id="annotationTab" type="button" role="tab" aria-selected="true" aria-controls="annotationPage">Annotation</button>
+      <button id="analyticsTab" type="button" role="tab" aria-selected="false" aria-controls="analyticsPage" tabindex="-1">Analytics</button>
+    </nav>
     <!--
       ── TOOLBAR ────────────────────────────────────────────────────
       Single unified top bar: file inputs, undo/redo, actions,
@@ -31,7 +38,7 @@
         <span>Open</span>
         <input id="imageInput" type="file" accept="image/png" />
       </label>
-      <label class="toolbar-btn file-input" title="Upload JSON annotations">
+      <label class="toolbar-btn file-input" title="Open JSON annotations and embedded image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
           <polyline points="14 2 14 8 20 8"/>
@@ -41,6 +48,14 @@
         <span>Open JSON</span>
         <input id="jsonInput" type="file" accept="application/json" />
       </label>
+
+      <button id="projectDrawerToggle" class="toolbar-btn" type="button" title="Show image queue" aria-expanded="false" aria-controls="projectDrawer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <rect x="3" y="3" width="18" height="18"/>
+          <path d="M9 3v18M3 9h6M3 15h6M13 8h4M13 12h4M13 16h4"/>
+        </svg>
+        <span>Images</span>
+      </button>
 
       <span class="toolbar-divider"></span>
 
@@ -171,6 +186,21 @@
 
       <span class="toolbar-spacer"></span>
 
+      <button id="openClassCatalog" class="toolbar-btn" type="button" title="Reusable class catalog">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M8 3v18M3 9h18M3 15h18"/>
+        </svg>
+        <span>Classes</span>
+      </button>
+      <button id="reviewAnnotations" class="toolbar-btn" type="button" title="Review annotation quality">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M9 5H5a2 2 0 00-2 2v13h14V7a2 2 0 00-2-2h-2"/>
+          <rect x="7" y="2" width="6" height="5" rx="1"/>
+          <path d="m7 13 2 2 5-5"/>
+        </svg>
+        <span>Review</span>
+      </button>
       <label class="format-select" for="outputFormat">
         <select id="outputFormat">
           <option value="llnl" selected>LLNL</option>
@@ -204,7 +234,18 @@
       </button>
     </header>
 
-    <main class="workspace">
+    <nav id="projectNavigation" class="project-navigation" aria-label="Image queue navigation" hidden>
+      <button id="projectPrev" type="button" title="Previous image">Previous</button>
+      <span id="projectPosition">Image 0 of 0</span>
+      <button id="projectNext" type="button" title="Next image">Next</button>
+      <span id="projectCurrentName" class="project-current-name"></span>
+      <button id="projectComplete" type="button">Mark complete</button>
+      <button id="projectExport" type="button">Export batch</button>
+      <button id="projectRetry" type="button" hidden>Retry save</button>
+      <span id="projectStatus" class="project-status" role="status" aria-live="polite"></span>
+    </nav>
+
+    <main id="annotationPage" class="workspace" role="tabpanel" aria-labelledby="annotationTab">
       <!--
         ── LEFT: TOOL STRIP ───────────────────────────────────────
         Narrow icon sidebar for tool selection, matching LabelMe.
@@ -245,6 +286,41 @@
           </svg>
           <span class="tool-strip-label">Edit</span>
         </button>
+      </aside>
+
+      <aside id="projectDrawer" class="project-drawer" aria-labelledby="projectDrawerTitle" hidden>
+        <div class="project-drawer-heading">
+          <strong id="projectDrawerTitle">Images</strong>
+          <span id="projectImageCount">0</span>
+          <button id="projectDrawerCollapse" type="button" title="Collapse image queue" aria-label="Collapse image queue">&lsaquo;</button>
+        </div>
+        <details id="projectActions" class="project-drawer-actions" hidden>
+          <summary id="projectActionsSummary">Batch actions</summary>
+          <div>
+            <button id="projectCloseCurrent" type="button">Close current image</button>
+            <button id="projectClearBatch" type="button">Clear batch</button>
+          </div>
+        </details>
+        <div class="project-drawer-controls">
+          <label for="projectName">Batch name</label>
+          <input id="projectName" type="text" maxlength="160" value="Image batch" />
+          <button id="projectAddImages" type="button">Add images</button>
+          <input id="projectImageInput" type="file" accept="image/png,.png,application/json,.json" multiple hidden />
+          <label for="projectSearch">Find image</label>
+          <input id="projectSearch" type="search" placeholder="Filename" />
+          <label for="projectFilter">Show</label>
+          <select id="projectFilter">
+            <option value="all">All images</option>
+            <option value="not-complete">Not complete</option>
+            <option value="complete">Complete</option>
+          </select>
+        </div>
+        <div id="projectImageList" class="project-image-list" aria-label="Images in this batch"></div>
+        <p id="projectEmptyList" class="project-empty">Add PNG images or JSON files containing an embedded image to begin a batch.</p>
+        <div class="project-drawer-footer">
+          <span id="projectProgress">No images yet</span>
+          <span id="projectDrawerStatus" class="project-status" role="status" aria-live="polite"></span>
+        </div>
       </aside>
 
       <!--
@@ -349,29 +425,35 @@
       <!--
         ── RIGHT: TIPS ────────────────────────────────────────────
       -->
-      <aside class="tips-panel">
+      <aside class="tips-panel" aria-label="Annotation panel">
         <section class="image-meta" aria-live="polite">
-          <h3>Image</h3>
-          <dl id="imageMetaList" class="image-meta-list">
-            <div><dt>Name</dt><dd id="metaImageName">-</dd></div>
-            <div><dt>Dimensions</dt><dd id="metaImageDimensions">-</dd></div>
-            <div><dt>File size</dt><dd id="metaImageSize">-</dd></div>
-            <div><dt>Type</dt><dd id="metaImageType">-</dd></div>
-            <div><dt>Updated</dt><dd id="metaImageUpdated">-</dd></div>
-            <div class="annotation-timer-row">
-              <dt>Time</dt>
-              <dd>
-                <div class="annotation-timer">
-                  <output id="annotationTimerValue">00:00:00</output>
-                  <div class="annotation-timer-controls">
-                    <button id="annotationTimerStart" class="annotation-timer-button" type="button" disabled>Start</button>
-                    <button id="annotationTimerStop" class="annotation-timer-button" type="button" disabled>Stop</button>
-                    <button id="annotationTimerReset" class="annotation-timer-button" type="button" disabled>Reset</button>
+          <h3 id="metaImageName" class="image-meta-name">-</h3>
+          <div class="autosave-status-row">
+            <span id="autosaveStatus" role="status" data-state="recovering">Checking saved session...</span>
+            <button id="autosaveRetry" type="button" hidden>Retry save</button>
+          </div>
+          <details id="imageDetails" class="image-details">
+            <summary>Image details</summary>
+            <dl id="imageMetaList" class="image-meta-list">
+              <div><dt>Dimensions</dt><dd id="metaImageDimensions">-</dd></div>
+              <div><dt>File size</dt><dd id="metaImageSize">-</dd></div>
+              <div><dt>Type</dt><dd id="metaImageType">-</dd></div>
+              <div><dt>Updated</dt><dd id="metaImageUpdated">-</dd></div>
+              <div class="annotation-timer-row">
+                <dt>Time</dt>
+                <dd>
+                  <div class="annotation-timer">
+                    <output id="annotationTimerValue">00:00:00</output>
+                    <div class="annotation-timer-controls">
+                      <button id="annotationTimerStart" class="annotation-timer-button" type="button" disabled>Start</button>
+                      <button id="annotationTimerStop" class="annotation-timer-button" type="button" disabled>Stop</button>
+                      <button id="annotationTimerReset" class="annotation-timer-button" type="button" disabled>Reset</button>
+                    </div>
                   </div>
-                </div>
-              </dd>
-            </div>
-          </dl>
+                </dd>
+              </div>
+            </dl>
+          </details>
           <div id="imageLoadStatus" class="image-load-status" hidden>
             <div class="image-load-status-row">
               <span id="imageLoadStatusText">Loading image...</span>
@@ -391,29 +473,67 @@
           </div>
         </section>
 
-        <section class="label-panel" aria-live="polite">
-          <div class="label-panel-header">
-            <h3>Label List</h3>
-            <span id="labelListCount" class="label-count">0</span>
-          </div>
-          <ul id="labelListUnique" class="label-list label-list--unique"></ul>
+        <section id="classWorkflowControls" class="class-workflow-controls class-selection-panel">
+          <label for="labelListUnique">Class for new shapes</label>
+          <select id="labelListUnique" disabled><option value="">Manual naming</option></select>
         </section>
 
-        <section class="label-panel" aria-live="polite">
+        <section class="label-panel shape-list-panel">
           <div class="label-panel-header">
-            <h3>Shape Labels</h3>
-            <label class="shape-color-picker" title="Set selected shape color">
-              <span>Color</span>
-              <input id="selectedShapeColor" type="color" value="#22c55e" disabled />
-            </label>
-            <button id="renameSelectedPolygon" class="label-panel-action" type="button" title="Rename selected shape">
-              Rename Selected
-            </button>
+            <h3>Shapes <span id="labelListCount" class="label-count">0</span></h3>
+            <button id="selectMultipleShapes" class="label-panel-action" type="button" aria-pressed="false" aria-controls="polygonLabelList classAssignmentControls" disabled>Select multiple</button>
           </div>
-          <ul id="polygonLabelList" class="label-list label-list--polygons"></ul>
+          <div id="shapeInspectionControls" class="shape-filter-controls">
+            <label for="annotationClassFilter" title="Filters change this view. Exports include all shapes.">Show shapes</label>
+            <select id="annotationClassFilter" title="Filters change this view. Exports include all shapes."><option value="">All classes</option></select>
+          </div>
+          <ul id="polygonLabelList" class="label-list label-list--polygons" aria-label="Shapes"></ul>
+          <div id="classAssignmentControls" class="class-workflow-controls" hidden>
+            <div class="class-assignment-header">
+              <strong id="checkedShapeCount">0 selected</strong>
+              <button id="clearClassChecks" class="label-panel-action" type="button" disabled>Clear selection</button>
+            </div>
+            <label for="batchClassSelect">Assign class</label>
+            <select id="batchClassSelect" disabled><option value="">Choose a class</option></select>
+            <div class="class-assignment-actions">
+              <button id="assignClassToSelected" class="label-panel-action" type="button" disabled>Assign to selected</button>
+            </div>
+            <p id="classAssignmentMessage" role="status" hidden></p>
+          </div>
+          <section id="selectedShapePanel" class="shape-inspection-controls" aria-labelledby="selectedShapeTitle" hidden>
+            <div class="shape-inspection-header">
+              <h4 id="selectedShapeTitle">Selected shape</h4>
+              <button id="clearShapeSelection" class="label-panel-action" type="button" aria-label="Clear selected shape">Close</button>
+            </div>
+            <fieldset id="selectedShapeInspection" aria-labelledby="selectedShapeTitle" disabled>
+              <div class="shape-inspection-properties">
+                <label id="selectedShapeClassRow" for="selectedShapeClass">Class
+                  <select id="selectedShapeClass" disabled><option value="">Choose a class</option></select>
+                </label>
+                <label class="shape-color-picker" title="Set selected shape color">
+                  <span>Color</span>
+                  <input id="selectedShapeColor" type="color" value="#22c55e" disabled />
+                </label>
+                <button id="renameSelectedPolygon" class="label-panel-action" type="button" title="Rename selected shape">Rename</button>
+              </div>
+              <div class="shape-inspection-toggles">
+                <label><input id="selectedShapeVisible" type="checkbox" checked> Show on canvas</label>
+                <label><input id="selectedShapeLocked" type="checkbox"> Locked</label>
+              </div>
+              <label for="selectedShapeReviewStatus">Review status</label>
+              <select id="selectedShapeReviewStatus">
+                <option value="unreviewed">Unreviewed</option>
+                <option value="needs-review">Needs review</option>
+                <option value="approved">Approved</option>
+              </select>
+            </fieldset>
+            <p id="shapeInspectionMessage" role="status"></p>
+          </section>
+          <p id="noShapeSelected" class="shape-selection-prompt">Select a shape to see its properties.</p>
         </section>
       </aside>
     </main>
+    <section id="analyticsPage" role="tabpanel" aria-labelledby="analyticsTab" hidden></section>
 
     <!--
       ── FLOATING DIALOGS ─────────────────────────────────────────
@@ -580,7 +700,7 @@
           <ul>
             <li>Use Tab (next) and Shift+Tab (previous) to cycle through annotations.</li>
             <li>Vertex edit mode: click and drag a vertex to move it.</li>
-            <li>Select a shape, then use the Color picker in Shape Labels to set its display color.</li>
+            <li>Select a shape, then use the Color picker in the selected-shape controls to set its display color.</li>
             <li>Alt + click on a polygon edge to insert a new vertex.</li>
             <li>In Edit mode, hold Shift or Ctrl/Cmd, then drag a selection box. Shift adds and Ctrl/Cmd subtracts.</li>
             <li>Press Delete/Backspace to remove selected annotation or vertices.</li>
@@ -596,8 +716,8 @@
         <details class="tips-group">
           <summary>Export</summary>
           <ul>
-            <li>Export JSON saves annotations. Export Mask saves a binary PNG. Invert Mask flips foreground/background values.</li>
-            <li>Upload JSON to replay an annotation.</li>
+            <li>Export JSON saves annotations and the original image. Export Mask saves a binary PNG. Invert Mask flips foreground/background values.</li>
+            <li>Open JSON restores annotations and its embedded image. For annotation-only JSON, load the matching PNG separately.</li>
           </ul>
         </details>
         <details class="tips-group">
@@ -621,6 +741,149 @@
         </details>
       </div>
     </div>
+
+    <dialog id="projectCleanupDialog" class="project-export-dialog project-cleanup-dialog"
+            aria-labelledby="projectCleanupTitle" aria-describedby="projectCleanupSummary projectCleanupWarning">
+      <form id="projectCleanupForm">
+        <h2 id="projectCleanupTitle">Remove image from batch?</h2>
+        <p id="projectCleanupSummary"></p>
+        <p id="projectCleanupWarning">This permanently removes the selected images, their saved annotations, and any unfinished annotation drafts from this browser batch. Original files and downloaded exports are not affected. Export first to keep completed annotations; unfinished drafts are not exported.</p>
+        <div class="project-export-actions">
+          <button id="projectCleanupCancel" type="button">Cancel</button>
+          <button id="projectCleanupExport" type="button">Export first</button>
+          <button id="projectCleanupConfirm" type="submit">Remove image</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="projectExportDialog" class="project-export-dialog" aria-labelledby="projectExportTitle">
+      <form id="projectExportForm">
+        <h2 id="projectExportTitle">Export image batch</h2>
+        <p>Create a ZIP containing the files for each image. JSON and masks use the existing export formats.</p>
+        <label for="projectExportScope">Images to include</label>
+        <select id="projectExportScope">
+          <option value="all">All images</option>
+          <option value="complete">Completed images</option>
+          <option value="current">Current image</option>
+        </select>
+        <label for="projectExportFormat">Annotation format</label>
+        <select id="projectExportFormat">
+          <option value="llnl">LLNL</option>
+          <option value="coco">MS COCO</option>
+        </select>
+        <fieldset>
+          <legend>Include</legend>
+          <label><input id="projectExportImages" type="checkbox" checked /> Original images</label>
+          <label><input id="projectExportMasks" type="checkbox" checked /> Segmentation masks (PNG)</label>
+          <label><input id="projectExportJson" type="checkbox" checked /> Annotation JSON</label>
+        </fieldset>
+        <p id="projectExportCocoNote" hidden>COCO keeps its existing polygon-only annotation format. Ellipses are included in segmentation masks.</p>
+        <p id="projectExportError" class="project-export-error" role="alert" hidden></p>
+        <div class="project-export-actions">
+          <button id="projectExportCancel" type="button">Cancel</button>
+          <button id="projectExportConfirm" type="submit">Download ZIP</button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="classCatalogDialog" class="class-catalog-dialog"
+            aria-labelledby="classCatalogTitle" aria-describedby="classCatalogHelp">
+      <div class="class-catalog-header">
+        <h2 id="classCatalogTitle">Reusable class catalog</h2>
+        <p id="classCatalogHelp">Save class names and IDs for use across images in this browser. Export and import a catalog to share it or keep a backup.</p>
+      </div>
+      <div class="class-catalog-body">
+        <label class="class-catalog-enabled"><input id="classCatalogEnabled" type="checkbox" /> Use this catalog for label suggestions and COCO class IDs</label>
+        <p class="class-catalog-note">Class names are case-sensitive. Register each polygon label before exporting COCO with the catalog enabled. LLNL JSON and binary masks keep their existing formats.</p>
+        <p id="classCatalogStatus" class="class-catalog-status" role="status" hidden></p>
+        <p id="classCatalogError" class="class-catalog-error" role="alert" hidden></p>
+        <div class="class-catalog-table-heading">
+          <h3>Classes</h3>
+          <span id="classCatalogCount">0 classes</span>
+        </div>
+        <div class="class-catalog-table-scroll">
+          <table class="class-catalog-table">
+            <caption class="class-catalog-caption">Class IDs and names</caption>
+            <thead><tr><th scope="col">ID</th><th scope="col">Name</th><th scope="col">Supercategory</th><th scope="col">Action</th></tr></thead>
+            <tbody id="classCatalogRows"></tbody>
+          </table>
+        </div>
+        <div class="class-catalog-add">
+          <label>ID<input id="classCatalogId" type="number" min="0" max="9007199254740991" step="1" inputmode="numeric" value="1" /></label>
+          <label>Name<input id="classCatalogName" type="text" autocomplete="off" /></label>
+          <label>Supercategory (optional)<input id="classCatalogSupercategory" type="text" autocomplete="off" /></label>
+          <button id="classCatalogAdd" type="button">Add class</button>
+        </div>
+        <p class="class-catalog-note">Removing a class does not rename or delete shapes. Keep IDs consistent with catalogs used for earlier images.</p>
+        <div class="class-catalog-file-actions">
+          <input id="classCatalogImport" type="file" accept="application/json,.json" hidden />
+          <button id="classCatalogImportButton" type="button">Import catalog</button>
+          <button id="classCatalogExport" type="button">Export catalog</button>
+          <button id="classCatalogReload" type="button">Reload saved catalog</button>
+        </div>
+        <p class="class-catalog-note">Import replaces the classes shown here. Export downloads the classes shown here, including unapplied changes. Reload discards these changes and reads the saved catalog.</p>
+      </div>
+      <div class="class-catalog-actions">
+        <p>Apply saves this catalog. Cancel discards unapplied changes.</p>
+        <button id="classCatalogCancel" type="button" class="secondary-action" autofocus>Cancel</button>
+        <button id="classCatalogApply" type="button" class="primary-action">Apply</button>
+      </div>
+    </dialog>
+
+    <dialog id="annotationQualityDialog" class="quality-dialog"
+            aria-labelledby="annotationQualityTitle" aria-describedby="annotationQualitySummary annotationQualityThreshold">
+      <div class="quality-dialog-header">
+        <h2 id="annotationQualityTitle">Annotation quality review</h2>
+        <p id="annotationQualitySummary" class="quality-summary"></p>
+        <p id="annotationQualityContext" class="quality-context"></p>
+        <p id="annotationQualityThreshold" class="quality-note">Checks cover crossing or overlapping polygon edges, invalid geometry, zero-area shapes, regions smaller than 4 original-image pixels², and duplicate boundaries. Warnings do not change shapes or prevent intentional exceptions.</p>
+      </div>
+      <div class="quality-tabs" role="tablist" aria-label="Annotation review tools">
+        <button id="annotationQualityChecksTab" type="button" role="tab" aria-controls="annotationQualityChecksPanel" aria-selected="true">Quality checks</button>
+        <button id="annotationQualityMaskTab" type="button" role="tab" aria-controls="annotationQualityMaskPanel" aria-selected="false" tabindex="-1">Mask preview</button>
+      </div>
+      <div id="annotationQualityChecksPanel" class="quality-tools-panel" role="tabpanel" aria-labelledby="annotationQualityChecksTab">
+        <label class="quality-overlap-option"><input id="annotationQualityOverlapChecks" type="checkbox"> Check overlaps larger than 20% of the smaller shape (optional)</label>
+        <p class="quality-note quality-overlap-note">Crossing strands can overlap intentionally. Ellipse overlap estimates use a sampled boundary.</p>
+        <p id="annotationQualityPairNotice" class="quality-pair-notice" role="status" hidden></p>
+        <ul id="annotationQualityIssues" class="quality-issues"></ul>
+        <section id="annotationQualityReviewSection" class="quality-review-section" aria-labelledby="annotationQualityReviewHeading" hidden>
+          <div class="quality-review-heading">
+            <h3 id="annotationQualityReviewHeading">Review progress</h3>
+            <label>Show <select id="annotationQualityStatusFilter">
+              <option value="all">All statuses</option>
+              <option value="unreviewed">Unreviewed</option>
+              <option value="needs-review">Needs review</option>
+              <option value="approved">Approved</option>
+            </select></label>
+          </div>
+          <p class="quality-note">Review status is saved with your browser session. Changing an approved shape’s boundary or label returns it to Unreviewed. Status does not change the export.</p>
+          <ul id="annotationQualityReviewEntries" class="quality-review-entries"></ul>
+          <nav class="quality-review-pages" aria-label="Review progress pages">
+            <button id="annotationQualityReviewPrevious" type="button">Previous</button>
+            <span id="annotationQualityReviewPageInfo" aria-live="polite"></span>
+            <button id="annotationQualityReviewNext" type="button">Next</button>
+          </nav>
+        </section>
+        <p id="annotationQualityReviewMessage" class="quality-review-message" role="status" hidden></p>
+      </div>
+      <div id="annotationQualityMaskPanel" class="quality-tools-panel quality-mask-panel" role="tabpanel" aria-labelledby="annotationQualityMaskTab" hidden>
+        <div class="quality-mask-controls">
+          <label>Mask <select id="annotationQualityMaskMode"><option value="normal">Normal</option><option value="inverted">Inverted</option></select></label>
+          <label><input id="annotationQualityCompareOriginal" type="checkbox"> Compare with original image</label>
+        </div>
+        <p class="quality-note">Full-document binary mask at the exported image dimensions. Includes all shapes, including ellipses and hidden or filtered shapes. Preview controls do not change export settings.</p>
+        <p id="annotationQualityPreviewMessage" role="status" hidden></p>
+        <div id="annotationQualityPreviewFigures" class="quality-preview-figures" data-compare="false" hidden>
+          <figure id="annotationQualityOriginalFigure" hidden><figcaption>Original image</figcaption><canvas id="annotationQualityOriginalCanvas" aria-label="Original image for comparison"></canvas></figure>
+          <figure><figcaption>Exported binary mask</figcaption><canvas id="annotationQualityMaskCanvas" aria-label="Binary mask preview"></canvas></figure>
+        </div>
+      </div>
+      <div class="quality-actions">
+        <button id="annotationQualityBack" type="button" class="secondary-action" autofocus>Back to editing</button>
+        <button id="annotationQualityExport" type="button" class="primary-action" hidden>Export anyway</button>
+      </div>
+    </dialog>
 
     <script type="module" src="src/app.js"></script>
   </body>

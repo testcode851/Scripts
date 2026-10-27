@@ -2,6 +2,16 @@ import { createAppState } from "../state/create-app-state.js";
 import { captureSessionSnapshot, validateSessionSnapshot } from "../session/session-snapshot.js";
 import { createEmbeddedImageImporter } from "./embedded-image-import.js";
 
+/** Keep the bytes already read by the loader, independent of later disk-file changes. */
+export function preserveLoadedImageFile(file, dataUrl) {
+  const prefix = typeof dataUrl === "string" && /^data:[^,]*;base64,/i.exec(dataUrl);
+  if (!prefix) throw new Error("The loaded image bytes are unavailable.");
+  const binary = atob(dataUrl.slice(prefix[0].length));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return new File([bytes], file.name, { type: file.type, lastModified: file.lastModified });
+}
+
 export function readImageDataUrl(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -43,7 +53,10 @@ export async function prepareProjectFile(file, { getClassCatalog = () => null } 
     nextFrame: () => Promise.resolve(),
     loadAnnotationData: () => { throw new Error("An embedded image is required when adding JSON to a batch."); },
     commitEmbeddedImage: ({ imported, image, file: embeddedFile }) => {
-      const original = isJson ? embeddedFile : file;
+      // The importer already copied and validated these exact PNG bytes. Do not
+      // keep a disk-backed File that may become unreadable before the batch saves.
+      const original = isJson ? embeddedFile : new File([embeddedFile], file.name,
+        { type: file.type, lastModified: file.lastModified });
       Object.assign(state.image, { image, imageName: imported.imageName, imageSize: imported.imageSize, calibration: imported.calibration });
       state.annotations.annotations = imported.annotations;
       entry = {

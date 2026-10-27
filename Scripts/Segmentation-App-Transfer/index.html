@@ -319,6 +319,11 @@
         <p id="projectEmptyList" class="project-empty">Add PNG images or JSON files containing an embedded image to begin a batch.</p>
         <div class="project-drawer-footer">
           <span id="projectProgress">No images yet</span>
+          <div id="projectImportProgress" class="project-import-progress" hidden>
+            <span id="projectImportLabel" role="status" aria-live="polite"></span>
+            <progress id="projectImportBar" max="1" aria-labelledby="projectImportLabel" aria-describedby="projectImportFile"></progress>
+            <span id="projectImportFile" class="project-status"></span>
+          </div>
           <span id="projectDrawerStatus" class="project-status" role="status" aria-live="polite"></span>
         </div>
       </aside>

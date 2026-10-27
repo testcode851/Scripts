@@ -54,7 +54,7 @@ import { captureSessionSnapshot, validateSessionSnapshot, applySessionSnapshot }
 import { createProjectStore } from "./session/project-store.js";
 import { createProjectController } from "./session/project-controller.js";
 import { createProjectDrawer } from "./ui/project-drawer.js";
-import { prepareProjectFile, prepareProjectDocument, projectThumbnail } from "./io/project-images.js";
+import { prepareProjectFile, prepareProjectDocument, projectThumbnail, preserveLoadedImageFile } from "./io/project-images.js";
 import { buildProjectExport, inspectProjectExport } from "./io/project-export.js";
 
 /*
@@ -1010,11 +1010,12 @@ const imageLoaderController = createImageLoader({
   render: {
     metadata: renderImageMetadata,
     onImageReady: (file) => {
+      const preservedFile = preserveLoadedImageFile(file, imageState.image.src);
       history.clear();
       sessionImage = {
         source: imageState.image,
         metadata: {
-          id: crypto.randomUUID(), blob: file, fileName: file.name,
+          id: crypto.randomUUID(), blob: preservedFile, fileName: file.name,
           fileType: file.type, lastModified: file.lastModified,
           width: imageState.image.width, height: imageState.image.height,
         },

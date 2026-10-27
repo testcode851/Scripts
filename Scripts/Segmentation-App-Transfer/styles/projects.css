@@ -81,6 +81,12 @@ body[data-page="analytics"] .project-navigation { display: none; }
 .project-image-detail { color: var(--text-subtle); font-size: .7rem; }
 .project-empty { padding: 12px; margin: 0; color: var(--text-subtle); }
 .project-drawer-footer { display: grid; gap: 5px; padding: 8px; background: var(--surface); border-top: 1px solid var(--border); }
+.project-import-progress { display: grid; gap: 5px; min-width: 0; font-variant-numeric: tabular-nums; }
+.project-import-progress progress { display: block; width: 100%; height: 10px; accent-color: var(--primary); border-radius: 0; }
+.project-import-progress progress[value] { appearance: none; border: 1px solid var(--border); background: var(--surface-progress-track); }
+.project-import-progress progress[value]::-webkit-progress-bar { background: var(--surface-progress-track); }
+.project-import-progress progress[value]::-webkit-progress-value { background: var(--primary); }
+.project-import-progress progress[value]::-moz-progress-bar { background: var(--primary); }
 .project-export-dialog { width: min(460px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; border: 1px solid var(--border-strong); color: var(--text); background: var(--surface); font-size: .85rem; }
 .project-export-dialog::backdrop { background: var(--modal-overlay); }
 .project-export-dialog h2 { margin: 0; font-size: 1.1rem; }

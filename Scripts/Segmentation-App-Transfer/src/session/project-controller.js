@@ -7,6 +7,7 @@ export function createProjectController({
   exportDocuments = async () => {}, createId = () => crypto.randomUUID(),
   setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout, delay = 30000,
   maxDelay = 30000, now = () => Date.now(),
+  yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
 }) {
   let project = null;
   let revision = 0;
@@ -28,6 +29,7 @@ export function createProjectController({
   let failure = null;
   let message = "";
   let contentKey = "";
+  let importProgress = null;
 
   const dirty = () => generation !== savedGeneration;
   const clone = value => structuredClone(value);
@@ -41,7 +43,7 @@ export function createProjectController({
   function publish() {
     if (disposed) return;
     onState({ project, contentRevision, activeId: project?.activeId, busy, expanded,
-      saving: Boolean(writing), error: failure?.message || "", message,
+      saving: Boolean(writing), error: failure?.message || "", message, importProgress,
       canRetry: Boolean(failure && failure.name !== "ProjectConflictError"), dirty: dirty() });
   }
   function cancelTimer() { if (timer !== null) clearTimeoutFn(timer); timer = null; }
@@ -182,9 +184,10 @@ export function createProjectController({
     try { return await operation(); }
     catch (error) {
       if (error?.name === "ProjectConflictError") return fail(error);
-      message = error instanceof Error ? error.message : String(error);
+      const detail = error instanceof Error ? error.message : String(error);
+      message = importProgress?.phase === "saving" ? `Could not save the image batch. ${detail}` : detail;
       publish(); return false;
-    } finally { busy = false; onBusy(false); publish(); schedule(); }
+    } finally { importProgress = null; busy = false; onBusy(false); publish(); schedule(); }
   }
   function adopt(next, entry, prepared) {
     project = next;
@@ -236,17 +239,41 @@ export function createProjectController({
     return exclusive(async () => {
       if (!available) throw new Error("Batch storage is unavailable. Reload before creating a batch.");
       await saveBeforeLeaving();
-      message = "Preparing images…"; publish();
+      const reportProgress = async progress => {
+        importProgress = progress;
+        message = progress.phase === "preparing" ? "Preparing images…"
+          : progress.phase === "opening" ? "Preparing the first image…"
+            : progress.phase === "checking" ? "Checking image files…" : "Saving image batch…";
+        publish();
+        // Let the browser paint the new count before decoding or checking another image.
+        await yieldToUi();
+      };
       const additions = [];
       for (const file of selected) {
-        const entry = await prepareFile(file);
+        await reportProgress({ phase: "preparing", completed: additions.length, total: selected.length, fileName: file.name || "Unnamed image" });
+        let entry;
+        try { entry = await prepareFile(file); }
+        catch (error) {
+          const failure = new Error(`Could not prepare “${file.name || "Unnamed image"}”. ${error?.message || String(error)}`, { cause: error });
+          failure.name = error?.name || "Error";
+          throw failure;
+        }
         additions.push({ ...entry, id: createId() });
+        await reportProgress({ phase: "preparing", completed: additions.length, total: selected.length, fileName: file.name || "Unnamed image" });
       }
       const previous = !project ? capture() : null;
       const documents = previous?.session?.image
         ? [{ ...previous, id: createId() }, ...additions] : additions;
       const target = additions[0];
-      const prepared = await prepareDocument(target);
+      const fileName = target.session.image.fileName;
+      await reportProgress({ phase: "opening", completed: 0, total: 1, fileName });
+      let prepared;
+      try { prepared = await prepareDocument(target); }
+      catch (error) {
+        const failure = new Error(`Could not open “${fileName}”. ${error?.message || String(error)}`, { cause: error });
+        failure.name = error?.name || "Error";
+        throw failure;
+      }
       const next = project ? clone(project) : { version: 1, id: createId(), name: "Image batch", activeId: target.id, items: [] };
       for (const entry of documents) {
         next.items.push({ id: entry.id, name: entry.session.snapshot.imageName,
@@ -255,7 +282,8 @@ export function createProjectController({
           ...(entry.thumbnailUrl ? { thumbnailUrl: entry.thumbnailUrl } : {}) });
       }
       next.activeId = target.id;
-      revision = await store.write(next, revision, documents);
+      revision = await store.write(next, revision, documents, { onProgress: reportProgress });
+      importProgress = null;
       adopt(next, target, prepared);
       return true;
     });

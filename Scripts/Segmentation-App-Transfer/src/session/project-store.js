@@ -186,7 +186,7 @@ export function createProjectStore({
     return blobDigests.get(blob);
   }
 
-  async function write(project, expectedRevision, documents = []) {
+  async function write(project, expectedRevision, documents = [], { onProgress } = {}) {
     if (closed) throw storageError("ProjectStorageClosedError", "Project storage is closed.");
     if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0) throw new TypeError("An expected project revision is required.");
     if (!Number.isSafeInteger(expectedRevision + 1)) throw new RangeError("The project revision is too large.");
@@ -210,7 +210,19 @@ export function createProjectStore({
       return { metadata, blob };
     });
     // Hash one new image at a time so a large batch does not materialize all encoded bytes together.
-    for (const item of prepared) item.digest = await imageDigest(item.blob);
+    for (let index = 0; index < prepared.length; index += 1) {
+      const item = prepared[index];
+      const fileName = item.metadata.session.image.fileName;
+      if (onProgress) await onProgress({ phase: "checking", completed: index, total: prepared.length, fileName });
+      try { item.digest = await imageDigest(item.blob); }
+      catch (error) {
+        if (!onProgress) throw error;
+        const failure = new Error(`Could not check “${fileName}”. ${error?.message || String(error)}`, { cause: error });
+        failure.name = error?.name || "Error";
+        throw failure;
+      }
+      if (onProgress) await onProgress({ phase: "checking", completed: index + 1, total: prepared.length, fileName });
+    }
     const imageIdentities = new Map();
     for (const { metadata, digest } of prepared) {
       const image = metadata.session.image;
@@ -221,6 +233,7 @@ export function createProjectStore({
       imageIdentities.set(image.id, { digest, width: image.width, height: image.height });
     }
     const preparedById = new Map(prepared.map(item => [item.metadata.id, item]));
+    if (onProgress) await onProgress({ phase: "saving", completed: 0, total: prepared.length, fileName: "" });
     return transaction([HEAD_STORE, DOCUMENT_STORE, IMAGE_STORE], "readwrite", (tx, done, fail) => {
       const heads = tx.objectStore(HEAD_STORE);
       const savedDocuments = tx.objectStore(DOCUMENT_STORE);

@@ -15,7 +15,8 @@ export function createProjectDrawer({
   const find = id => documentRoot.getElementById(id);
   const ids = ["DrawerToggle", "Drawer", "DrawerCollapse", "Navigation", "Prev", "Next",
     "Position", "CurrentName", "Complete", "Export", "Retry", "Status", "DrawerStatus", "Name",
-    "ImageCount", "Progress", "Search", "Filter", "ImageList", "EmptyList", "AddImages",
+    "ImageCount", "Progress", "ImportProgress", "ImportLabel", "ImportBar", "ImportFile",
+    "Search", "Filter", "ImageList", "EmptyList", "AddImages",
     "ImageInput", "ExportDialog", "ExportForm", "ExportScope", "ExportFormat", "ExportImages",
     "ExportMasks", "ExportJson", "ExportCocoNote", "ExportError", "ExportCancel", "ExportConfirm",
     "Actions", "ActionsSummary", "CloseCurrent", "ClearBatch", "CleanupDialog", "CleanupForm",
@@ -41,14 +42,43 @@ export function createProjectDrawer({
     if (element && element[key] !== value) element[key] = value;
   }
 
-  function setStatus(text = "", isError = false) {
+  function setStatus(text = "", isError = false, hideDrawerStatus = false) {
     const routineSave = !isError && ["Saved", "Unsaved", "Saving…"].includes(text);
     for (const element of [elements.Status, elements.DrawerStatus]) {
-      const visibleText = element === elements.Status && routineSave ? "" : String(text || "");
+      const visibleText = (element === elements.Status && routineSave)
+        || (element === elements.DrawerStatus && hideDrawerStatus) ? "" : String(text || "");
       set(element, "textContent", visibleText);
       set(element, "hidden", !visibleText);
       element?.setAttribute("data-error", String(Boolean(isError)));
     }
+  }
+
+  function renderImportProgress() {
+    const progress = state.busy && !state.error ? state.importProgress : null;
+    set(elements.ImportProgress, "hidden", !progress);
+    if (!progress) {
+      set(elements.ImportLabel, "textContent", "");
+      set(elements.ImportFile, "textContent", "");
+      elements.ImportBar?.removeAttribute("value");
+      return false;
+    }
+    const total = Number.isSafeInteger(progress.total) && progress.total > 0 ? progress.total : 0;
+    const completed = Number.isSafeInteger(progress.completed)
+      ? Math.max(0, Math.min(progress.completed, total)) : 0;
+    const determinate = total > 0 && (progress.phase === "preparing" || progress.phase === "checking");
+    const labels = { preparing: "Preparing images", opening: "Preparing first image", checking: "Checking images", saving: "Saving batch" };
+    const label = labels[progress.phase] || "Preparing images";
+    set(elements.ImportLabel, "textContent", determinate
+      ? `${label}: ${completed} of ${total} (${Math.round(completed / total * 100)}%)` : `${label}…`);
+    set(elements.ImportFile, "textContent", progress.fileName || "");
+    set(elements.ImportFile, "hidden", !progress.fileName);
+    if (determinate) {
+      elements.ImportBar?.setAttribute("max", String(total));
+      elements.ImportBar?.setAttribute("value", String(completed));
+    } else {
+      elements.ImportBar?.removeAttribute("value");
+    }
+    return true;
   }
 
   async function invoke(callback, ...args) {
@@ -195,7 +225,8 @@ export function createProjectDrawer({
     set(elements.ImageCount, "textContent", String(all.length));
     set(elements.Progress, "textContent", hasProject ? `${complete} of ${all.length} complete` : "No images yet");
     elements.Drawer?.setAttribute("aria-busy", String(isBusy()));
-    setStatus(state.error || (state.saving ? "Saving…" : state.message || (state.dirty ? "Unsaved" : hasProject ? "Saved" : "")), Boolean(state.error));
+    const showingImportProgress = renderImportProgress();
+    setStatus(state.error || (state.saving ? "Saving…" : state.message || (state.dirty ? "Unsaved" : hasProject ? "Saved" : "")), Boolean(state.error), showingImportProgress);
     if (listChanged) renderList();
     rendered = true;
   }

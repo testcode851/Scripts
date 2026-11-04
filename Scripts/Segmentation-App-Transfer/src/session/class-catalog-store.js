@@ -3,11 +3,10 @@ import { createSessionStore } from "./session-store.js";
 
 const validRevision = value => Number.isSafeInteger(value) && value >= 0;
 
-/** Reuse atomic revision checks in a database separate from image recovery. */
+/** Reuse independent atomic revision checks in the local project folder. */
 export function createClassCatalogStore({
-  indexedDB = globalThis.indexedDB,
-  databaseName = "segmentation-annotator-class-catalog",
-  backingStore = createSessionStore({ indexedDB, databaseName }),
+  client,
+  backingStore = createSessionStore({ client, kind: "catalog" }),
 } = {}) {
   let closed = false;
 

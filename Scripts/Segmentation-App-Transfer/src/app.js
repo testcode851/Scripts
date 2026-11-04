@@ -54,6 +54,8 @@ import { captureSessionSnapshot, validateSessionSnapshot, applySessionSnapshot }
 import { createProjectStore } from "./session/project-store.js";
 import { createProjectController } from "./session/project-controller.js";
 import { createProjectDrawer } from "./ui/project-drawer.js";
+import { createLocalProjectClient, localProjectClient } from "./session/local-project-client.js";
+import { createLocalProjectDialog } from "./ui/local-project-dialog.js";
 import { prepareProjectFile, prepareProjectDocument, projectThumbnail, preserveLoadedImageFile } from "./io/project-images.js";
 import { buildProjectExport, inspectProjectExport } from "./io/project-export.js";
 
@@ -195,7 +197,31 @@ let projectController = null;
 let projectImportGeneration = 0;
 let sessionImage = null;
 let recoveringImage = null;
-const classCatalogStore = createClassCatalogStore();
+let localProjectDialog = null;
+let leavingLocalProject = false;
+let pendingLocalProject = null;
+document.body.inert = true;
+// Load the project preference before constructing the synchronous class selector.
+// The storage adapters surface connection failures with the existing retry controls.
+await localProjectClient.initialize().catch(() => {});
+if (localProjectClient.info) {
+  const projectUrl = new URL(location.href);
+  projectUrl.searchParams.set("project", localProjectClient.info.id);
+  window.history.replaceState(window.history.state, "", projectUrl.href);
+}
+// A standalone document can use classes without creating any on-disk project.
+let temporaryCatalog = { revision: 0, value: null };
+const classCatalogStore = createClassCatalogStore(localProjectClient.info ? {} : {
+  backingStore: {
+    async read() { return structuredClone(temporaryCatalog); },
+    async write(value, expectedRevision) {
+      if (expectedRevision !== temporaryCatalog.revision) throw new Error("The temporary class catalog changed. Reload it and retry.");
+      temporaryCatalog = { revision: expectedRevision + 1, value: structuredClone(value) };
+      return temporaryCatalog.revision;
+    },
+    close() {},
+  },
+});
 let classCatalog = emptyClassCatalog();
 let classCatalogRevision = 0;
 let classCatalogObservedRevision = 0;
@@ -206,11 +232,12 @@ const classWorkflow = createClassWorkflow({
   annotationState, interactionState, imageState,
   getCatalog: () => classCatalog,
   getCatalogError: () => classCatalogError,
+  getStorage: () => localProjectClient.preferenceStorage,
   isLabelEditorOpen: () => Boolean(uiState.activeLabelEdit),
 });
 const classCatalogButton = document.getElementById("openClassCatalog");
-const classCatalogChannel = typeof BroadcastChannel === "function"
-  ? new BroadcastChannel("segmentation-annotator-class-catalog") : null;
+const classCatalogChannel = localProjectClient.info && typeof BroadcastChannel === "function"
+  ? new BroadcastChannel(`segmentation-annotator-class-catalog:${localProjectClient.info?.id || "unavailable"}`) : null;
 
 function updateClassCatalogStatus() {
   classCatalogButton.dataset.enabled = String(classCatalog.enabled);
@@ -1159,7 +1186,7 @@ const pointerController = createPointerController({
 
 const keyboardController = createKeyboardController({
   target: document,
-  isEnabled: () => uiState.activePage === "annotation" && !qualityReview.isOpen() && !classCatalogDialog.isOpen()
+  isEnabled: () => uiState.activePage === "annotation" && !qualityReview.isOpen() && !classCatalogDialog.isOpen() && !localProjectDialog?.isOpen()
     && !projectController?.busy && !document.getElementById("projectExportDialog")?.open
     && !document.getElementById("projectCleanupDialog")?.open
     && !document.activeElement?.closest(".app-page-nav"),
@@ -1415,6 +1442,7 @@ async function restoreSession(value) {
 
 sessionAutosave = createSessionAutosave({
   store: createSessionStore(),
+  enabled: Boolean(localProjectClient.info),
   canSave: () => imageState.imageLoadStatus !== "loading"
     && !(interactionState.isDrawing && (interactionState.activeVertex || interactionState.activeAnnotationDrag)),
   capture: () => {
@@ -1451,6 +1479,7 @@ function projectNavigationGuard() {
 
 projectController = createProjectController({
   store: createProjectStore(), legacyAutosave: legacySessionAutosave,
+  initialName: localProjectClient.info?.name || "Image batch",
   canLeave: projectNavigationGuard,
   canSave: () => imageState.imageLoadStatus === "loading"
     || (interactionState.isDrawing && (interactionState.activeVertex || interactionState.activeAnnotationDrag)),
@@ -1531,6 +1560,12 @@ projectController = createProjectController({
   onState: value => {
     projectView = value;
     projectDrawer?.render({ ...value, outputFormat: settingsState.outputFormat });
+    localProjectDialog?.render({ ...localProjectClient.info,
+      busy: value.busy });
+    if (!value.project) {
+      document.getElementById("projectName").value = localProjectClient.info?.name || "";
+      document.getElementById("projectName").disabled = !localProjectClient.info;
+    }
     if (value.project) {
       const state = value.error ? "unavailable" : value.saving ? "saving" : value.dirty ? "dirty" : "saved";
       const message = value.error ? `${value.message} ${value.error}`
@@ -1563,7 +1598,7 @@ projectController = createProjectController({
 });
 projectDrawer = createProjectDrawer({
   onToggle: value => projectController.toggle(value), onSelect: id => projectController.select(id),
-  onAddFiles: files => projectController.addFiles(files),
+  onAddFiles: files => localProjectClient.info ? projectController.addFiles(files) : localProjectDialog.open(),
   onComplete: (id, complete) => projectController.complete(id, complete),
   onExport: options => projectController.exportBatch(options), onRename: name => projectController.rename(name),
   onRetry: () => projectController.retry(),
@@ -1572,18 +1607,80 @@ projectDrawer = createProjectDrawer({
   onClear: () => projectController.clearBatch(),
 });
 projectDrawer.render({ expanded: false });
+async function changeLocalProject({ folder, name, location: parentFolder }) {
+  if (localProjectClient.info && !(await projectController.prepareToLeave())) throw new Error(projectView?.error || projectView?.message || "The current work could not be saved.");
+  if (!localProjectClient.info && folder && (legacySessionAutosave.hasUnsavedChanges
+    || classCatalogRevision > 0 || localProjectClient.hasUnsavedPreferences)
+    && !confirm("Opening this project will discard your temporary work. Export it or create a new project to keep it. Continue opening the saved project?")) {
+    throw new Error("Your temporary work is still open.");
+  }
+  await localProjectClient.flushPreferences();
+  if (!folder && (pendingLocalProject?.name !== name || pendingLocalProject?.location !== parentFolder)) {
+    pendingLocalProject = { ...await localProjectClient.create(name, parentFolder), location: parentFolder };
+  }
+  const selectedId = folder ? (await localProjectClient.openFolder(folder)).id : pendingLocalProject.id;
+  if (!localProjectClient.info && !folder) {
+    const destinationClient = createLocalProjectClient({ projectId: selectedId });
+    await destinationClient.initialize();
+    if (imageState.image || imageState.imageSize || annotationState.annotations.length) {
+      if (imageState.image && sessionImage?.source !== imageState.image) throw new Error("Wait for the image to finish loading before saving it.");
+      const store = createSessionStore({ client: destinationClient });
+      const current = await destinationClient.json("session");
+      await store.write({ schemaVersion: 1, savedAt: Date.now(),
+        image: imageState.image ? sessionImage.metadata : null,
+        snapshot: captureSessionSnapshot(sessionState) }, current.revision);
+    }
+    if (classCatalogRevision > 0) {
+      const current = await destinationClient.json("catalog");
+      await createClassCatalogStore({ client: destinationClient }).save(classCatalog, current.revision);
+    }
+    const activeClass = localProjectClient.preferenceStorage.getItem();
+    if (activeClass) destinationClient.preferenceStorage.setItem(null, activeClass);
+    await destinationClient.flushPreferences();
+  }
+  await localProjectClient.activate(selectedId);
+  const destination = new URL(location.href);
+  destination.searchParams.set("project", selectedId);
+  leavingLocalProject = true;
+  location.assign(destination.href);
+}
+localProjectDialog = createLocalProjectDialog({
+  onBrowse: purpose => localProjectClient.browse(purpose),
+  onCreate: changeLocalProject,
+  onOpen: folder => changeLocalProject({ folder }),
+  canChange: () => projectView?.busy ? "Wait for the current image operation to finish." : projectNavigationGuard(),
+});
+localProjectDialog.render(localProjectClient.info || {});
+document.getElementById("localProjectManage").addEventListener("click", () => localProjectDialog.open());
+// A multi-image queue needs a folder, while ordinary Open stays temporary.
+document.getElementById("projectAddImages").addEventListener("click", event => {
+  if (localProjectClient.info) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void localProjectDialog.open();
+}, true);
 outputFormatSelect.addEventListener("change", () => {
   if (projectView) projectDrawer.render({ ...projectView, outputFormat: settingsState.outputFormat });
+  if (!projectView?.project) {
+    document.getElementById("projectName").value = localProjectClient.info?.name || "";
+    document.getElementById("projectName").disabled = !localProjectClient.info;
+  }
 });
 sessionAutosave = projectController;
 autosaveRetry.addEventListener("click", () => sessionAutosave.retry());
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "hidden") sessionAutosave.flush();
+  if (document.visibilityState === "hidden") {
+    sessionAutosave.flush();
+    void localProjectClient.flushPreferences().catch(() => {});
+  }
 });
 window.addEventListener("pagehide", () => sessionAutosave.flush());
 window.addEventListener("beforeunload", (event) => {
+  if (leavingLocalProject) return;
   sessionAutosave.flush();
-  if (sessionAutosave.hasUnsavedChanges) {
+  void localProjectClient.flushPreferences().catch(() => {});
+  if (sessionAutosave.hasUnsavedChanges || localProjectClient.hasUnsavedPreferences
+    || (!localProjectClient.info && classCatalogRevision > 0)) {
     event.preventDefault();
     event.returnValue = "";
   }
@@ -1598,7 +1695,15 @@ try {
     legacySessionAutosave.initialize(),
     reloadClassCatalog().catch(() => {}),
   ]);
-  await projectController.initialize();
+  if (localProjectClient.info) {
+    await projectController.initialize();
+  } else {
+    autosaveRetry.hidden = true;
+    document.getElementById("classCatalogHelp").textContent = "These classes are temporary. Create a project to save them with your work, or export a catalog to keep a separate copy.";
+    document.getElementById("classCatalogSaveHelp").textContent = "Apply uses this catalog in this temporary session. Cancel discards unapplied changes.";
+    emptyState.textContent = "Upload a PNG to get started.";
+    projectController.toggle(false);
+  }
 } finally {
   document.body.inert = false;
   document.documentElement.dataset.appReady = "true";

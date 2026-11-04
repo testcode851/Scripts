@@ -1,6 +1,6 @@
 import { createAppState } from "../state/create-app-state.js";
 import { captureSessionSnapshot, validateSessionSnapshot } from "../session/session-snapshot.js";
-import { createEmbeddedImageImporter } from "./embedded-image-import.js";
+import { createEmbeddedImageImporter, validatePngBytes } from "./embedded-image-import.js";
 
 /** Keep the bytes already read by the loader, independent of later disk-file changes. */
 export function preserveLoadedImageFile(file, dataUrl) {
@@ -30,7 +30,7 @@ export function projectThumbnail(image) {
   return canvas.toDataURL("image/png");
 }
 
-/** Reuse the existing embedded-import validation in a detached, disposable editor state. */
+/** Validate batch images in a detached, disposable editor state. */
 export async function prepareProjectFile(file, { getClassCatalog = () => null } = {}) {
   let data;
   const isJson = /\.json$/i.test(file.name) || file.type === "application/json";
@@ -41,36 +41,63 @@ export async function prepareProjectFile(file, { getClassCatalog = () => null } 
     }
   } else {
     if (file.type !== "image/png" && !/\.png$/i.test(file.name)) throw new Error("Add PNG images or JSON files containing an embedded PNG.");
-    const source = await readImageDataUrl(file);
-    data = { version: "1.0", imagePath: file.name, image_base64: source.slice(source.indexOf(",") + 1), shapes: [] };
   }
   const state = createAppState({});
   let entry;
+  const commitEmbeddedImage = ({ imported, image, file: original }) => {
+    Object.assign(state.image, { image, imageName: imported.imageName, imageSize: imported.imageSize, calibration: imported.calibration });
+    state.annotations.annotations = imported.annotations;
+    entry = {
+      session: { schemaVersion: 1, savedAt: Date.now(),
+        image: { id: crypto.randomUUID(), blob: original, fileName: original.name,
+          fileType: "image/png", lastModified: original.lastModified,
+          width: image.width, height: image.height },
+        snapshot: captureSessionSnapshot({ imageState: state.image, annotationState: state.annotations,
+          interactionState: state.interaction, labelColorAssignments: new Map() }) },
+      displaySize: { width: image.width, height: image.height },
+      thumbnailUrl: projectThumbnail(image),
+    };
+    return true;
+  };
+  if (!isJson) {
+    // Read once, retaining independent original bytes without a Base64 round trip.
+    let buffer;
+    try { buffer = await file.arrayBuffer(); }
+    catch (cause) { throw new Error("Could not read the image file.", { cause }); }
+    const dimensions = validatePngBytes(new Uint8Array(buffer));
+    const original = new File([buffer], file.name, { type: file.type, lastModified: file.lastModified });
+    // A .png file may have an empty or incorrect MIME type. Decode it as PNG,
+    // while preserving the original File metadata for storage and export.
+    const image = new Image();
+    const url = URL.createObjectURL(original.slice(0, original.size, "image/png"));
+    try {
+      await new Promise((resolve, reject) => {
+        image.onload = resolve;
+        image.onerror = () => reject(new Error("Could not decode the embedded PNG image. The current document has not been changed."));
+        image.src = url;
+      });
+      if (image.naturalWidth !== dimensions.width || image.naturalHeight !== dimensions.height) {
+        throw new Error("The decoded embedded image dimensions do not match the annotation document.");
+      }
+      commitEmbeddedImage({ image, file: original, imported: {
+        annotations: [], imageName: file.name.trim() ? file.name : "embedded-image.png",
+        imageSize: dimensions, calibration: null,
+      } });
+    } finally {
+      URL.revokeObjectURL(url);
+      image.onload = null;
+      image.onerror = null;
+      image.removeAttribute("src");
+    }
+    return entry;
+  }
   const importer = createEmbeddedImageImporter({
     imageState: state.image, annotationState: state.annotations, interactionState: state.interaction,
     getClassCatalog,
     imageProcessing: { buildHistogramEqualizedCanvas: () => null, buildImageAnalysisData: () => null },
     nextFrame: () => Promise.resolve(),
     loadAnnotationData: () => { throw new Error("An embedded image is required when adding JSON to a batch."); },
-    commitEmbeddedImage: ({ imported, image, file: embeddedFile }) => {
-      // The importer already copied and validated these exact PNG bytes. Do not
-      // keep a disk-backed File that may become unreadable before the batch saves.
-      const original = isJson ? embeddedFile : new File([embeddedFile], file.name,
-        { type: file.type, lastModified: file.lastModified });
-      Object.assign(state.image, { image, imageName: imported.imageName, imageSize: imported.imageSize, calibration: imported.calibration });
-      state.annotations.annotations = imported.annotations;
-      entry = {
-        session: { schemaVersion: 1, savedAt: Date.now(),
-          image: { id: crypto.randomUUID(), blob: original, fileName: original.name,
-            fileType: "image/png", lastModified: original.lastModified,
-            width: image.width, height: image.height },
-          snapshot: captureSessionSnapshot({ imageState: state.image, annotationState: state.annotations,
-            interactionState: state.interaction, labelColorAssignments: new Map() }) },
-        displaySize: { width: image.width, height: image.height },
-        thumbnailUrl: projectThumbnail(image),
-      };
-      return true;
-    },
+    commitEmbeddedImage,
   });
   await importer.load(data);
   return entry;

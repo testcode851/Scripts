@@ -37,6 +37,9 @@ body[data-page="analytics"] .project-navigation { display: none; }
 }
 .project-drawer-heading { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-bottom: 1px solid var(--border); background: var(--surface-strong); }
 .project-drawer-heading strong { flex: 1; }
+.local-project-summary { display: grid; gap: 4px; padding: 9px; border-bottom: 1px solid var(--border); background: var(--surface); }
+.local-project-summary strong, #localProjectFolder { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.local-project-summary button { margin-top: 3px; }
 .project-drawer-actions { border-bottom: 1px solid var(--border); background: var(--surface); }
 .project-drawer-actions summary { padding: 7px 9px; cursor: pointer; }
 .project-drawer-actions > div { display: grid; gap: 5px; padding: 0 9px 9px; }
@@ -97,6 +100,11 @@ body[data-page="analytics"] .project-navigation { display: none; }
 .project-export-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .project-cleanup-dialog p { overflow-wrap: anywhere; }
 .project-cleanup-dialog .project-export-actions { flex-wrap: wrap; }
+.local-project-dialog > * + * { margin-top: 12px; }
+.local-project-dialog .local-project-location { overflow-wrap: anywhere; font-size: .75rem; }
+.local-project-dialog input { width: 100%; min-width: 0; border: 1px solid var(--border); border-radius: 0; padding: 5px 6px; color: var(--text); background: var(--surface-white); font: inherit; }
+.local-project-dialog fieldset button { justify-self: end; }
+.local-project-path-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
 @media (min-width: 1301px) {
   body.has-image-project[data-page="annotation"] { grid-template-rows: auto auto auto minmax(0, 1fr); }
 }

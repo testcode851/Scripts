@@ -6,7 +6,7 @@ export function createProjectController({
   onState = () => {}, onBusy = () => {}, onLayout = () => {},
   exportDocuments = async () => {}, createId = () => crypto.randomUUID(),
   setTimeoutFn = setTimeout, clearTimeoutFn = clearTimeout, delay = 30000,
-  maxDelay = 30000, now = () => Date.now(),
+  maxDelay = 30000, now = () => Date.now(), initialName = "Image batch",
   yieldToUi = () => new Promise(resolve => setTimeout(resolve, 0)),
 }) {
   let project = null;
@@ -184,7 +184,7 @@ export function createProjectController({
     try { return await operation(); }
     catch (error) {
       if (error?.name === "ProjectConflictError") return fail(error);
-      const detail = error instanceof Error ? error.message : String(error);
+      const detail = error instanceof Error ? error.message || error.name || "Unknown error" : String(error);
       message = importProgress?.phase === "saving" ? `Could not save the image batch. ${detail}` : detail;
       publish(); return false;
     } finally { importProgress = null; busy = false; onBusy(false); publish(); schedule(); }
@@ -222,7 +222,7 @@ export function createProjectController({
           const entry = await store.readDocument(saved.value.activeId);
           const prepared = await prepareDocument(entry);
           adopt(saved.value, entry, prepared);
-          message = "Batch restored. Changes are saved automatically in this browser.";
+          message = "Batch restored. Changes are saved automatically in the project folder.";
         } else {
           adoptClosed(saved.value);
           message = saved.value.items.length ? "Batch restored. Choose an image to continue." : "The batch is empty. Add images to begin.";
@@ -249,22 +249,27 @@ export function createProjectController({
         await yieldToUi();
       };
       const additions = [];
+      let target = null;
       for (const file of selected) {
         await reportProgress({ phase: "preparing", completed: additions.length, total: selected.length, fileName: file.name || "Unnamed image" });
         let entry;
-        try { entry = await prepareFile(file); }
+        try {
+          entry = { ...await prepareFile(file), id: createId() };
+          target ||= entry;
+          // Local disk storage stages one original at a time; only the first image
+          // keeps its Blob for the editor. The queue still publishes atomically.
+          additions.push(store.stageDocument ? await store.stageDocument(entry) : entry);
+        }
         catch (error) {
           const failure = new Error(`Could not prepare “${file.name || "Unnamed image"}”. ${error?.message || String(error)}`, { cause: error });
           failure.name = error?.name || "Error";
           throw failure;
         }
-        additions.push({ ...entry, id: createId() });
         await reportProgress({ phase: "preparing", completed: additions.length, total: selected.length, fileName: file.name || "Unnamed image" });
       }
       const previous = !project ? capture() : null;
       const documents = previous?.session?.image
         ? [{ ...previous, id: createId() }, ...additions] : additions;
-      const target = additions[0];
       const fileName = target.session.image.fileName;
       await reportProgress({ phase: "opening", completed: 0, total: 1, fileName });
       let prepared;
@@ -274,7 +279,7 @@ export function createProjectController({
         failure.name = error?.name || "Error";
         throw failure;
       }
-      const next = project ? clone(project) : { version: 1, id: createId(), name: "Image batch", activeId: target.id, items: [] };
+      const next = project ? clone(project) : { version: 1, id: createId(), name: initialName, activeId: target.id, items: [] };
       for (const entry of documents) {
         next.items.push({ id: entry.id, name: entry.session.snapshot.imageName,
           status: entry.session.snapshot.annotations.length || entry.session.snapshot.polygonDraft.currentPolygon.length
@@ -376,6 +381,7 @@ export function createProjectController({
   }
   return {
     initialize, addFiles, select, complete, rename, exportBatch, closeCurrent, remove, clearBatch, notifyChange, flush,
+    prepareToLeave: () => exclusive(async () => { await saveBeforeLeaving(); return true; }),
     retry() {
       if (!project) return legacyAutosave.retry();
       if (failure?.name === "ProjectConflictError") return Promise.resolve(false);

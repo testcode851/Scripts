@@ -8,7 +8,7 @@ export function createClassWorkflow({
   getCatalog,
   getCatalogError = () => "",
   isLabelEditorOpen = () => false,
-  getStorage = () => globalThis.localStorage,
+  getStorage = () => null,
 }) {
   let activeChoice = null;
   let documentAnnotations = annotationState.annotations;

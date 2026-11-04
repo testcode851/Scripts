@@ -1,8 +1,9 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
+import { readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAnalyticsHandler } from "./analytics-service.js";
+import { createLocalProjectService } from "./local-project-service.js";
 
 const root = path.resolve(fileURLToPath(new URL("../", import.meta.url)));
 const contentTypes = new Map([
@@ -18,9 +19,14 @@ const contentTypes = new Map([
 export function createAppServer(options = {}) {
   const appRoot = options.root || root;
   const analytics = createAnalyticsHandler({ ...options, root: appRoot });
-  return createServer(async (request, response) => {
+  const projects = createLocalProjectService({ ...options, root: appRoot });
+  const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url || "/", "http://" + (request.headers.host || "localhost"));
+      if (url.pathname === "/api/projects" || url.pathname.startsWith("/api/projects/")) {
+        await projects.handle(request, response);
+        return;
+      }
       if (url.pathname === "/api/analytics/widths" || url.pathname === "/api/analytics/figure") {
         await analytics(request, response);
         return;
@@ -33,6 +39,10 @@ export function createAppServer(options = {}) {
       }
       const fileStat = await stat(filePath);
       if (!fileStat.isFile()) throw new Error("Not a file");
+      if (await projects.isProtectedPath(await realpath(filePath))) {
+        response.writeHead(403).end("Forbidden");
+        return;
+      }
       const body = await readFile(filePath);
       response.writeHead(200, {
         "Content-Type": contentTypes.get(path.extname(filePath).toLowerCase()) || "application/octet-stream",
@@ -44,6 +54,9 @@ export function createAppServer(options = {}) {
       response.end("Not found");
     }
   });
+  server.closeProjectStorage = () => projects.close();
+  server.on("close", () => { void projects.close().catch(() => {}); });
+  return server;
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

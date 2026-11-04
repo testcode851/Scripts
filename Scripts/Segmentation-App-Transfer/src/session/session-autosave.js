@@ -10,6 +10,7 @@ export function createSessionAutosave({
   delay = 30000,
   maxDelay = 30000,
   now = () => Date.now(),
+  enabled = true,
 }) {
   let initialized = false;
   let initializing = null;
@@ -57,6 +58,11 @@ export function createSessionAutosave({
 
   function recover() {
     if (disposed) return Promise.resolve(false);
+    if (!enabled) {
+      initialized = true;
+      status("temporary", "Temporary session. Autosave is off; export your work or create a project to save it.");
+      return Promise.resolve(true);
+    }
     if (initializing) return initializing;
     cancelTimer();
     status("recovering", "Checking for a saved session…");
@@ -89,7 +95,7 @@ export function createSessionAutosave({
         savedGeneration = generation;
         firstUnsavedAt = null;
         lastEditAt = null;
-        status("saved", "Session restored. Changes are saved automatically in this browser.");
+        status("saved", "Session restored. Changes are saved automatically in the project folder.");
       } else if (current || dirty()) {
         failure = null;
         if (!dirty()) generation += 1;
@@ -169,6 +175,7 @@ export function createSessionAutosave({
     notifyChange() {
       if (disposed || !initialized || initializing) return;
       generation += 1;
+      if (!enabled) return;
       lastEditAt = now();
       firstUnsavedAt ??= lastEditAt;
       if (failure === "restore") failure = null;

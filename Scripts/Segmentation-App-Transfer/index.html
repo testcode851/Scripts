@@ -294,6 +294,12 @@
           <span id="projectImageCount">0</span>
           <button id="projectDrawerCollapse" type="button" title="Collapse image queue" aria-label="Collapse image queue">&lsaquo;</button>
         </div>
+        <div class="local-project-summary">
+          <span>Project folder</span>
+          <strong id="localProjectName">No project open</strong>
+          <span id="localProjectFolder" class="project-status" hidden></span>
+          <button id="localProjectManage" type="button">Open</button>
+        </div>
         <details id="projectActions" class="project-drawer-actions" hidden>
           <summary id="projectActionsSummary">Batch actions</summary>
           <div>
@@ -747,12 +753,43 @@
       </div>
     </div>
 
-    <dialog id="projectCleanupDialog" class="project-export-dialog project-cleanup-dialog"
+  <dialog id="localProjectDialog" class="project-export-dialog local-project-dialog" aria-labelledby="localProjectTitle" aria-describedby="localProjectHelp">
+    <h2 id="localProjectTitle">Local projects</h2>
+    <p id="localProjectHelp">Open a project folder or choose where to create one.</p>
+    <fieldset>
+      <legend>Open project</legend>
+      <label for="localProjectOpenFolder">Project folder</label>
+      <div class="local-project-path-row">
+        <input id="localProjectOpenFolder" type="text" autocomplete="off" spellcheck="false" placeholder="Choose or enter a folder path" />
+        <button id="localProjectBrowseOpen" type="button">Browse…</button>
+      </div>
+      <button id="localProjectOpen" type="button" disabled>Open project</button>
+    </fieldset>
+    <form id="localProjectCreateForm">
+      <fieldset>
+        <legend>New project</legend>
+        <label for="localProjectNewName">Folder name</label>
+        <input id="localProjectNewName" type="text" maxlength="120" autocomplete="off" required />
+        <label for="localProjectLocation">Location</label>
+        <div class="local-project-path-row">
+          <input id="localProjectLocation" type="text" autocomplete="off" spellcheck="false" placeholder="Choose or enter a folder path" required />
+          <button id="localProjectBrowseLocation" type="button">Browse…</button>
+        </div>
+        <p id="localProjectDestination" class="local-project-location" aria-live="polite" hidden></p>
+        <button id="localProjectCreate" type="submit" disabled>Create project</button>
+      </fieldset>
+    </form>
+    <p id="localProjectStatus" role="status" aria-live="polite"></p>
+    <p id="localProjectError" class="project-export-error" role="alert" hidden></p>
+    <div class="project-export-actions"><button id="localProjectCancel" type="button">Cancel</button></div>
+  </dialog>
+
+  <dialog id="projectCleanupDialog" class="project-export-dialog project-cleanup-dialog"
             aria-labelledby="projectCleanupTitle" aria-describedby="projectCleanupSummary projectCleanupWarning">
       <form id="projectCleanupForm">
         <h2 id="projectCleanupTitle">Remove image from batch?</h2>
         <p id="projectCleanupSummary"></p>
-        <p id="projectCleanupWarning">This permanently removes the selected images, their saved annotations, and any unfinished annotation drafts from this browser batch. Original files and downloaded exports are not affected. Export first to keep completed annotations; unfinished drafts are not exported.</p>
+      <p id="projectCleanupWarning">This permanently removes the selected images, their saved annotations, and any unfinished annotation drafts from this project. Original files and downloaded exports are not affected. Export first to keep completed annotations; unfinished drafts are not exported.</p>
         <div class="project-export-actions">
           <button id="projectCleanupCancel" type="button">Cancel</button>
           <button id="projectCleanupExport" type="button">Export first</button>
@@ -795,7 +832,7 @@
             aria-labelledby="classCatalogTitle" aria-describedby="classCatalogHelp">
       <div class="class-catalog-header">
         <h2 id="classCatalogTitle">Reusable class catalog</h2>
-        <p id="classCatalogHelp">Save class names and IDs for use across images in this browser. Export and import a catalog to share it or keep a backup.</p>
+        <p id="classCatalogHelp">Save class names and IDs for use across images in this project. Export and import a catalog to share it or keep a backup.</p>
       </div>
       <div class="class-catalog-body">
         <label class="class-catalog-enabled"><input id="classCatalogEnabled" type="checkbox" /> Use this catalog for label suggestions and COCO class IDs</label>
@@ -829,7 +866,7 @@
         <p class="class-catalog-note">Import replaces the classes shown here. Export downloads the classes shown here, including unapplied changes. Reload discards these changes and reads the saved catalog.</p>
       </div>
       <div class="class-catalog-actions">
-        <p>Apply saves this catalog. Cancel discards unapplied changes.</p>
+        <p id="classCatalogSaveHelp">Apply saves this catalog. Cancel discards unapplied changes.</p>
         <button id="classCatalogCancel" type="button" class="secondary-action" autofocus>Cancel</button>
         <button id="classCatalogApply" type="button" class="primary-action">Apply</button>
       </div>
@@ -862,7 +899,7 @@
               <option value="approved">Approved</option>
             </select></label>
           </div>
-          <p class="quality-note">Review status is saved with your browser session. Changing an approved shape’s boundary or label returns it to Unreviewed. Status does not change the export.</p>
+        <p class="quality-note">Review status is saved with your project. Changing an approved shape’s boundary or label returns it to Unreviewed. Status does not change the export.</p>
           <ul id="annotationQualityReviewEntries" class="quality-review-entries"></ul>
           <nav class="quality-review-pages" aria-label="Review progress pages">
             <button id="annotationQualityReviewPrevious" type="button">Previous</button>

@@ -23,6 +23,8 @@ Keep this structure intact when running or transferring the application:
 - `index.html`
 - `package.json`
 - `scripts/dev-server.js`
+- `scripts/local-project-service.js`
+- `scripts/project-folder-picker.js` and `scripts/project-folder-picker.ps1`
 - `scripts/analytics-service.js` and `scripts/analytics_adapter.py`
 - `src/` and everything inside it
 - `styles/` and everything inside it
@@ -65,6 +67,48 @@ $env:PORT=4174
 npm run dev
 ```
 
+## Local project folders
+
+Projects now save to ordinary folders on this computer through the local Node
+server. They do not use the browser's IndexedDB quota. Choose **Open** in the
+Images drawer, then **Browse** to choose where to create a named project or
+select an existing project folder. A location can also be pasted into the dialog.
+The full destination appears before creation. No shared parent folder is required
+or created automatically. The drawer displays the actual folder name and path. Switching
+projects saves the current work first and reloads the editor for the selected
+project. The base app URL starts with no project open and creates no default
+project. Regular **Open** and **Open JSON** still allow temporary annotation,
+with autosave off. Export temporary work to keep it, or create a project to save
+the current image, annotations, calibration, classes, and active class choice.
+Opening an existing project asks before discarding temporary work. Multi-image
+batches require an explicitly opened project. Refreshing a URL containing
+`?project=...` restores only that explicitly selected project while the same app
+server is running. After restarting the server, browse to the project folder again.
+
+On Windows, **Browse** opens a native folder chooser on the computer running
+`npm run dev`. If the chooser is unavailable, enter the full folder path directly.
+The previous `SEGMENTATION_PROJECTS_DIR` setting is no longer used. Each project
+has a separate image queue, saved documents, and class catalog. New folders use the exact
+valid folder name entered by the operator (for example `Batch001`). An existing
+folder must be opened or a different name chosen; no numbered suffix is added.
+Older projects stored in ID-named folders can be opened directly by browsing to
+that folder. Their old parent `projects.json` registry is not required. The batch
+name names the dataset ZIP; changing it does not rename the project folder or
+its displayed project name.
+
+Project files include original image bytes and internal editor snapshots. These
+snapshots preserve editor state beyond what LLNL or COCO exports contain; exported
+JSON files are not the project's working database. Source images selected from
+other folders are copied without modifying those originals. Clearing browser data
+does not remove the saved project folders. Unsaved edits remain in memory until
+the next successful save. Earlier browser databases are not imported or migrated.
+
+For a complete backup, finish saving, stop the server, and copy the whole project
+folder, including `project.json` and `images`. Browse to that folder to reopen it
+after moving or copying it, including on another computer. Separate folders can
+have the same name. Concurrent app servers cannot write to the same project folder.
+Continue using dataset exports to share PNGs, annotation JSON, and masks with other tools.
+
 ## Application Files and Data
 
 - Start the app with `npm run dev`; do not open `index.html` directly.
@@ -102,14 +146,16 @@ npm run dev
 - `src/workflows/` coordinates annotation and document operations.
 - `scripts/dev-server.js` runs the local Node.js web server.
 - `scripts/analytics-service.js` handles local measurement requests and Python jobs.
+- `scripts/local-project-service.js` saves project files through the local server.
+- `scripts/project-folder-picker.js` and its `.ps1` helper open the Windows folder chooser.
 - `scripts/analytics_adapter.py` converts masks and engine results to pixel-based JSON.
 - `src/analytics/` handles calibration, results, figures, and downloads.
-- `src/session/` validates and saves local recovery snapshots in browser storage.
+- `src/session/` validates recovery snapshots and saves them through the local project API.
 
 ## Autosave and Session Recovery
 
-Outside an image batch, the app automatically saves one current session in this browser and restores it
-when you reopen the same app address. The status below the image name shows whether
+Outside an image batch, the app automatically saves the current session in its project folder and restores it
+when you reopen that project. The status below the image name shows whether
 changes are **Unsaved**, **Saving…**, or **Saved**. Both single-image and batch
 editing save 30 seconds after the first unsaved change. Further edits do not
 postpone that checkpoint, and another is scheduled only when changes are pending.
@@ -133,11 +179,11 @@ Storage errors show a retry option without interrupting editing. If another tab
 saves a newer session, the older tab stops saving and asks you to export its work
 before reloading; it cannot overwrite the newer saved session automatically.
 
-Recovery stays on this computer, in the same browser profile and app address
-(including the port). Clearing browser data, private browsing cleanup, storage
-eviction, or changing the address can make it unavailable. Unsaved edits can be
-lost on a crash before a save finishes. Continue exporting annotation JSON and
-keeping the original image as a separate backup.
+Recovery stays in the local project folder. It does not depend on the browser
+profile, browser storage quota, or server port. Use the same configured project
+location to reopen it. Unsaved edits can still be lost on a crash before a save
+finishes. A full disk or unavailable project folder can prevent saving; keep
+project backups and annotation exports separately.
 
 ## Image batches
 
@@ -165,9 +211,9 @@ class catalog are unaffected. A save or storage failure keeps the current image 
 queue in place. These actions apply to images in the drawer, separately from clearing
 shapes on an image.
 
-The current batch saves automatically in a separate IndexedDB database named
-`segmentation-annotator-projects`. It preserves the earlier single-session recovery
-database. Each image retains its own original bytes, annotations, colors, calibration,
+The current batch saves automatically in the local project folder. Image bytes
+are stored separately from annotation snapshots, so an annotation save does not
+rewrite every original image. Each image retains its original bytes, annotations, colors, calibration,
 review/visibility/lock state, fixed polygon draft, and paused annotation timer.
 Switching waits for a successful save and prepares the destination before replacing
 the editor. A save or decode failure keeps the current image open. Finish or cancel
@@ -186,10 +232,15 @@ remain included. Quality warnings and omitted ellipses are disclosed before
 export. Each image has its own folder containing the original filename, annotation
 JSON, and mask; a manifest keeps same-named images separate and records their paths.
 This is a dataset export, not a full project backup: it does not provide restoration
-of the queue's completion states or all app-specific review information. The first
-version manages one continuing batch; multiple named projects and portable full
-project backup/restore are separate follow-up capabilities. Browser storage remains
-specific to this browser profile and app address, so export work you need to keep.
+of the queue's completion states or all app-specific review information. Each local
+project manages one continuing batch. Use **Open** in the Images drawer for separate
+projects and copy the complete individual project folder for a full backup.
+
+Local project storage can hold batches larger than browser storage allows. The
+existing ZIP exporter still builds the download in browser memory and supports
+archives below 4 GiB. A larger disk project therefore does not imply that its
+entire dataset can be exported in one ZIP; streaming exports with ZIP64 support
+are a separate follow-up.
 
 ## COCO classes and instances
 
@@ -234,8 +285,8 @@ a class there to use it for new shapes. Polygons, rectangles, and ellipses keep
 the class chosen when drawing started and finish without a naming popup. Choose
 **Manual naming** to return to the existing naming workflow. If a draft's class
 is removed, renamed, or disabled before completion, the naming popup returns.
-The active choice is remembered in this browser when preference storage is
-available, survives image replacement, and clears if its class is removed or
+The active choice is saved as a preference in the local project folder,
+survives image replacement, and clears if its class is removed or
 disabled. Choosing a class does not relabel existing shapes.
 
 To relabel an existing shape, select it and choose its **Class** in the selected
@@ -260,13 +311,13 @@ document. Existing instance grouping and the ellipse omission rule still apply.
 LLNL JSON keeps its existing format and contains the labels you assigned. Binary
 masks remain unchanged by class assignment. The catalog does not define colors.
 
-The catalog is stored separately from the image and its undo history. It survives
-image replacement, clearing annotations, and session recovery in the same browser
-profile and app address. **Export catalog** downloads the staged class definitions
+The catalog is stored in the project folder, separately from the image and its undo
+history. It survives image replacement, clearing annotations, and project recovery.
+Each project has its own catalog. **Export catalog** downloads the staged class definitions
 as a separate catalog JSON file; **Import catalog** replaces the staged entries
 and enables them, with **Apply** required to save. These files are not annotation
 files. Keep a catalog export as a backup or use it to share definitions across
-browsers and computers. Clearing browser data can remove the stored catalog.
+projects, browsers, and computers. Clearing browser data does not remove the saved catalog.
 
 Saving checks for edits from another tab and never silently overwrites them.
 **Reload saved catalog** discards staged edits and reloads the saved definitions.
@@ -319,7 +370,7 @@ sidebar or Review dialog; the dialog can filter this list by status and displays
 25 entries per page. These are human decisions, separate from automatic warnings.
 Changing approved geometry or its label returns it to Unreviewed; Needs review
 persists until explicitly changed. Visibility, lock, and review decisions support
-undo/redo and automatic browser session recovery. They are editor metadata and do
+undo/redo and automatic project recovery. They are editor metadata and do
 not change LLNL or COCO export schemas. The class filter is a temporary view setting.
 
 Use **Select shape** to close the review and select that annotation for inspection.
@@ -386,7 +437,7 @@ other ZIP formats are not supported. The viewer accepts archives up to 256 MiB,
 with individual file and decoded image limits.
 
 Analysis bundles are saved only when you click the export button. Running an
-analysis does not download or persist its results. Browser session autosave
+analysis does not download or persist its results. Project autosave
 continues to save annotations, the image, and calibration separately. Export a
 bundle before refreshing or closing the page. The ZIP documents a completed
 analysis; it does not install its recorded Python environment or reopen as an

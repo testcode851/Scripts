@@ -25,6 +25,11 @@ function decodePng(value, atobFn) {
   }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return { bytes, binary, ...validatePngBytes(bytes) };
+}
+
+/** Use the same complete PNG integrity checks for embedded and plain image imports. */
+export function validatePngBytes(bytes) {
   const signature = [137, 80, 78, 71, 13, 10, 26, 10];
   if (bytes.length < 33 || signature.some((byte, index) => bytes[index] !== byte)
     || bytes[12] !== 73 || bytes[13] !== 72 || bytes[14] !== 68 || bytes[15] !== 82) {
@@ -67,7 +72,7 @@ function decodePng(value, atobFn) {
   if (!ended || imageDataBytes === 0) {
     throw new Error("The embedded PNG is incomplete: image data and an end-of-image chunk are required.");
   }
-  return { bytes, binary, width, height };
+  return { width, height };
 }
 
 /** Stage an embedded image and annotations before replacing any live document state. */

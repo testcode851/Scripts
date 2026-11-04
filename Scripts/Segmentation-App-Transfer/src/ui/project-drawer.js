@@ -65,7 +65,7 @@ export function createProjectDrawer({
     const total = Number.isSafeInteger(progress.total) && progress.total > 0 ? progress.total : 0;
     const completed = Number.isSafeInteger(progress.completed)
       ? Math.max(0, Math.min(progress.completed, total)) : 0;
-    const determinate = total > 0 && (progress.phase === "preparing" || progress.phase === "checking");
+    const determinate = total > 0 && ["preparing", "checking", "saving"].includes(progress.phase);
     const labels = { preparing: "Preparing images", opening: "Preparing first image", checking: "Checking images", saving: "Saving batch" };
     const label = labels[progress.phase] || "Preparing images";
     set(elements.ImportLabel, "textContent", determinate

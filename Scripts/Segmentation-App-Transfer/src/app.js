@@ -56,7 +56,7 @@ import { createProjectController } from "./session/project-controller.js";
 import { createProjectDrawer } from "./ui/project-drawer.js";
 import { createLocalProjectClient, localProjectClient } from "./session/local-project-client.js";
 import { createLocalProjectDialog } from "./ui/local-project-dialog.js";
-import { prepareProjectFile, prepareProjectDocument, projectThumbnail, preserveLoadedImageFile } from "./io/project-images.js";
+import { prepareProjectFile, prepareProjectEntry, prepareProjectDocument, projectThumbnail, imageMetadata } from "./io/project-images.js";
 import { buildProjectExport, inspectProjectExport } from "./io/project-export.js";
 
 /*
@@ -93,6 +93,10 @@ const {
   snapExtremaDeltaInput,
   sourceEnhancementSelect,
   imageContrastInput,
+  blackLevelInput,
+  whiteLevelInput,
+  nativeWindowControls,
+  nativeRangeOutput,
   maskContrastInput,
   maskOpacityInput,
   imageContrastValue,
@@ -196,7 +200,6 @@ let sessionAutosave = null;
 let projectController = null;
 let projectImportGeneration = 0;
 let sessionImage = null;
-let recoveringImage = null;
 let localProjectDialog = null;
 let leavingLocalProject = false;
 let pendingLocalProject = null;
@@ -505,6 +508,8 @@ bootstrap.enter("application-services");
 let analyticsController = null;
 const appPresenter = createAppPresenter({
   controls: {
+    nativeWindowControls,
+    nativeRangeOutput,
     gridToggle,
     snapToggle,
     smartSnapToggle,
@@ -521,6 +526,8 @@ const appPresenter = createAppPresenter({
     snapExtremaDeltaInput,
     sourceEnhancementSelect,
     imageContrastInput,
+    blackLevelInput,
+    whiteLevelInput,
     maskContrastInput,
     maskOpacityInput,
     snapPresetSelect,
@@ -543,6 +550,8 @@ const appPresenter = createAppPresenter({
   renderLabels: bootstrap.method("labelPanelsController", "render"),
   requestCanvasRender,
   requestSelectionCanvasRender,
+  imageState,
+  onDisplayChange: () => sessionAutosave?.notifyChange(),
   onRedraw: () => analyticsController?.refresh(),
 });
 bootstrap.register("appPresenter", appPresenter);
@@ -1037,23 +1046,11 @@ const imageLoaderController = createImageLoader({
   render: {
     metadata: renderImageMetadata,
     onImageReady: (file) => {
-      const preservedFile = preserveLoadedImageFile(file, imageState.image.src);
       history.clear();
-      sessionImage = {
-        source: imageState.image,
-        metadata: {
-          id: crypto.randomUUID(), blob: preservedFile, fileName: file.name,
-          fileType: file.type, lastModified: file.lastModified,
-          width: imageState.image.width, height: imageState.image.height,
-        },
-      };
-      if (recoveringImage) recoveringImage.resolve();
-      else sessionAutosave?.notifyChange();
+      sessionImage = { source: imageState.image, metadata: imageMetadata(file, imageState.image) };
+      sessionAutosave?.notifyChange();
     },
-    onImageError: (message) => {
-      if (recoveringImage) recoveringImage.reject(new Error(message));
-      else sessionAutosave?.flush();
-    },
+    onImageError: () => sessionAutosave?.flush(),
     setLoadState: (...args) => {
       setImageLoadState(...args);
       labelPanelsController.refreshClassControls();
@@ -1067,9 +1064,7 @@ const imageLoaderController = createImageLoader({
     resizeCanvasToImage,
     resetViewTransform,
   },
-  FileReaderType: window.FileReader,
   ImageType: window.Image,
-  alertFn: (message) => { if (!recoveringImage) alert(message); },
 });
 bootstrap.register("imageLoaderController", imageLoaderController);
 const {
@@ -1103,18 +1098,11 @@ const embeddedImageImporter = createEmbeddedImageImporter({
       imageFileType: file.type,
       imageLastModified: file.lastModified,
     });
-    sessionImage = {
-      source: imageState.image,
-      metadata: {
-        id: crypto.randomUUID(), blob: file, fileName: file.name,
-        fileType: file.type, lastModified: file.lastModified,
-        width: imageState.image.width, height: imageState.image.height,
-      },
-    };
+    sessionImage = { source: imageState.image, metadata: imageMetadata(file, imageState.image) };
     if (emptyState) emptyState.style.display = "none";
     setImageLoadState("success", 100, "Image ready.");
     const result = documentWorkflows.loadAnnotationData(null, { preparedDocument: imported });
-    // As with a PNG upload, old-image undo entries cannot cross this boundary.
+    // Undo entries belong to the previously loaded original.
     history.clear();
     renderImageMetadata();
     renderAnnotationTimer();
@@ -1252,6 +1240,8 @@ const featureController = createFeatureController({
     applyPresetButton,
     resetSettingsButton,
     imageContrastInput,
+    blackLevelInput,
+    whiteLevelInput,
     gridOpacityInput,
     snapEdgeThresholdInput,
     maskContrastInput,
@@ -1280,11 +1270,11 @@ const featureController = createFeatureController({
       if (projectController?.active && !projectController.project.activeId && data?.image_base64 == null) {
         throw new Error("Choose an image from the drawer before importing annotation-only JSON.");
       }
-      const currentBase64 = imageState.image?.src?.split(",")[1];
-      if (projectController?.active && data?.image_base64 != null && data.image_base64 !== currentBase64) {
-        return projectController.addFiles([new File([JSON.stringify(data)], "annotations.json", { type: "application/json" })]);
-      }
-      return embeddedImageImporter.load(data);
+      return embeddedImageImporter.load(data, {
+        addNewImage: projectController?.active
+          ? document => projectController.addFiles([document.source.originalFile], () => prepareProjectEntry(document, imageProcessing))
+          : undefined,
+      });
     },
     cancelAnnotationImport: embeddedImageImporter.cancelPending,
     startAnnotationTimer,
@@ -1322,6 +1312,8 @@ analyticsController = createAnalyticsController({
   imageState,
   annotationState,
   maskRenderer,
+  imageProcessing,
+  getCurrentReferenceImage: getActiveImageSource,
   onCalibrationChange: (value) => {
     history.transaction(() => {
       imageState.calibration = normalizeCalibration(value, imageState.imageSize);
@@ -1387,9 +1379,22 @@ bootstrap.complete([
 const autosaveStatus = document.getElementById("autosaveStatus");
 const autosaveRetry = document.getElementById("autosaveRetry");
 const sessionState = {
-  imageState, annotationState, interactionState,
+  imageState, annotationState, interactionState, settingsState,
   labelColorAssignments: annotationCatalog.colorAssignments,
 };
+
+function installSavedImage(prepared, metadata) {
+  imageCache.install(prepared);
+  Object.assign(imageState, {
+    revision: (imageState.revision || 0) + 1,
+    imageFileSizeBytes: metadata.blob.size,
+    imageFileType: prepared.originalFile.type,
+    imageLastModified: metadata.lastModified,
+  });
+  sessionImage = { source: imageState.image, metadata };
+  emptyState.style.display = "none";
+  setImageLoadState("success", 100, "Image ready.");
+}
 
 async function restoreSession(value) {
   if (value?.schemaVersion !== 1 || !Number.isFinite(value.savedAt)) {
@@ -1404,32 +1409,12 @@ async function restoreSession(value) {
     || !Number.isSafeInteger(image.height) || image.height <= 0)) {
     throw new Error("The saved image metadata is invalid.");
   }
-  const snapshot = validateSessionSnapshot(value.snapshot, image || undefined);
+  let snapshot;
   if (image) {
-    // Verify the original bytes and dimensions before installing any document data.
-    const url = URL.createObjectURL(image.blob);
-    try {
-      const decoded = new Image();
-      decoded.src = url;
-      await decoded.decode();
-      if (decoded.naturalWidth !== image.width || decoded.naturalHeight !== image.height) {
-        throw new Error("The saved image does not match the document dimensions.");
-      }
-    } finally {
-      URL.revokeObjectURL(url);
-    }
-    try {
-      await new Promise((resolve, reject) => {
-        recoveringImage = { resolve, reject };
-        imageLoaderController.start(new File([image.blob], image.fileName, {
-          type: image.fileType, lastModified: image.lastModified,
-        }));
-      });
-      sessionImage.metadata = { ...image };
-    } finally {
-      recoveringImage = null;
-    }
-  }
+    const prepared = await prepareProjectDocument({ session: value }, imageProcessing);
+    installSavedImage(prepared, image);
+    snapshot = prepared.snapshot;
+  } else snapshot = validateSessionSnapshot(value.snapshot);
   applySessionSnapshot(snapshot, sessionState);
   resizeCanvasToImage();
   resetViewTransform();
@@ -1496,7 +1481,7 @@ projectController = createProjectController({
       displaySize: { width: canvas.width, height: canvas.height },
       ...(!projectController?.active ? { thumbnailUrl: projectThumbnail(imageState.image) } : {}) };
   },
-  prepareFile: file => prepareProjectFile(file, { getClassCatalog }),
+  prepareFile: file => prepareProjectFile(file, { getClassCatalog, imageProcessing }),
   prepareDocument: entry => prepareProjectDocument(entry, imageProcessing),
   clearDocument: () => {
     embeddedImageImporter.cancelPending();
@@ -1515,7 +1500,7 @@ projectController = createProjectController({
     history.clear();
     emptyState.textContent = projectController.project.items.length
       ? "Choose an image from the Images drawer."
-      : "Add images from the Images drawer or open a PNG to get started.";
+      : "Add images from the Images drawer or open a PNG, TIFF, or BMP to get started.";
     emptyState.style.display = "";
     setImageLoadState("idle", 0, "");
     resetViewTransform();
@@ -1531,17 +1516,10 @@ projectController = createProjectController({
     closeCanvasLabelEditor();
     closeCanvasContextMenu();
     resetAnnotationTimer();
-    imageCache.install(prepared);
-    const metadata = entry.session.image;
-    Object.assign(imageState, { revision: (imageState.revision || 0) + 1,
-      imageFileSizeBytes: metadata.blob.size, imageFileType: metadata.fileType || "image/png",
-      imageLastModified: metadata.lastModified });
-    sessionImage = { source: imageState.image, metadata };
+    installSavedImage(prepared, entry.session.image);
     applySessionSnapshot(prepared.snapshot, sessionState);
     history.clear();
     uiState.annotationClassFilter = null;
-    emptyState.style.display = "none";
-    setImageLoadState("success", 100, "Image ready.");
     resizeCanvasToImage();
     resetViewTransform();
     renderInvalidation.invalidateAll();
@@ -1701,7 +1679,7 @@ try {
     autosaveRetry.hidden = true;
     document.getElementById("classCatalogHelp").textContent = "These classes are temporary. Create a project to save them with your work, or export a catalog to keep a separate copy.";
     document.getElementById("classCatalogSaveHelp").textContent = "Apply uses this catalog in this temporary session. Cancel discards unapplied changes.";
-    emptyState.textContent = "Upload a PNG to get started.";
+    emptyState.textContent = "Open a PNG, TIFF, or BMP to get started.";
     projectController.toggle(false);
   }
 } finally {

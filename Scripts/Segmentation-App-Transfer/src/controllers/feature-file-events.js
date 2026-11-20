@@ -1,4 +1,4 @@
-/** Bind PNG loading and JSON annotation import controls. */
+/** Bind source image loading and JSON annotation import controls. */
 export function bindFeatureFileEvents({
   elements,
   listen,
@@ -12,11 +12,6 @@ export function bindFeatureFileEvents({
     if (!file) return;
     fileRequest += 1;
     actions.cancelAnnotationImport?.();
-    if (file.type !== "image/png") {
-      alertFn("Please upload a PNG image.");
-      event.target.value = "";
-      return;
-    }
     if (!actions.loadImage(file)) {
       event.target.value = "";
     }

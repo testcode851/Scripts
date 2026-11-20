@@ -6,6 +6,7 @@ import { drawImageCanvas, fitCanvas } from "./analytics-renderer.js";
 import { createAnalysisBundle } from "./analysis-bundle.js";
 import { createSavedAnalysisViewer } from "./saved-analysis-viewer.js";
 import { createBenchmarkFigure } from "./benchmark-figure.js";
+import { prepareSource, readSource } from "../image/prepare-source.js";
 
 const TEMPLATE = `
   <div class="analytics-heading"><div>
@@ -26,7 +27,7 @@ const TEMPLATE = `
   </div>
   <div id="analyticsReference" class="analytics-card analytics-calibration" hidden>
     <div class="analytics-reference-intro"><div><h2>Calibrate a known distance</h2><p class="analytics-help">Choose two points on a distance you know, then enter its length in micrometers.</p></div>
-      <div class="analytics-inline"><button type="button" id="analyticsUseCurrent">Use current image</button><label class="analytics-file-button">Choose reference image<input id="analyticsReferenceFile" type="file" accept="image/*"></label></div></div>
+      <div class="analytics-inline"><button type="button" id="analyticsUseCurrent">Use current image</button><label class="analytics-file-button">Choose reference image<input id="analyticsReferenceFile" type="file" accept="image/*,.tif,.tiff"></label></div></div>
     <p id="analyticsReferenceName" class="analytics-help">No reference selected.</p>
     <div class="analytics-reference-layout"><canvas id="analyticsReferenceCanvas" aria-label="Calibration reference. Click two endpoints or enter their coordinates below." hidden></canvas>
       <div class="analytics-reference-fields">
@@ -87,7 +88,8 @@ function fileStem(name) {
 }
 
 /** Connect the current annotation mask to local Python measurements and presentation. */
-export function createAnalyticsController({ root, imageState, annotationState, maskRenderer, onCalibrationChange }) {
+export function createAnalyticsController({ root, imageState, annotationState, maskRenderer, imageProcessing,
+  getCurrentReferenceImage = () => imageState.image, onCalibrationChange }) {
   const documentRoot = root.ownerDocument;
   const windowRoot = documentRoot.defaultView;
   root.classList.add("analytics-page");
@@ -435,7 +437,7 @@ export function createAnalyticsController({ root, imageState, annotationState, m
   function chooseCurrentReference() {
     if (!imageState.image || !imageState.imageSize) return;
     referenceRequest += 1;
-    reference = { image: imageState.image, imageName: imageState.imageName, ...imageState.imageSize, source: "current" };
+    reference = { image: getCurrentReferenceImage(), imageName: imageState.imageName, ...imageState.imageSize, source: "current" };
     referencePoints = []; drawReference();
   }
 
@@ -457,15 +459,22 @@ export function createAnalyticsController({ root, imageState, annotationState, m
     const file = element("ReferenceFile").files[0];
     if (!file) return;
     const token = ++referenceRequest;
-    const url = URL.createObjectURL(file);
+    let url;
     try {
-      const image = await loadImage(url);
+      let image;
+      if (file.type === "image/tiff" || /\.tiff?$/i.test(file.name)) {
+        const prepared = await prepareSource(await readSource(file), imageProcessing, { analyze: false });
+        image = prepared.image;
+      } else {
+        url = URL.createObjectURL(file);
+        image = await loadImage(url);
+      }
       if (destroyed || token !== referenceRequest) return;
-      reference = { image, imageName: file.name, width: image.naturalWidth, height: image.naturalHeight, source: "upload" };
+      reference = { image, imageName: file.name, width: image.width, height: image.height, source: "upload" };
       referencePoints = []; element("SameAcquisition").checked = false; drawReference();
     } catch (error) {
       if (token === referenceRequest) element("CalibrationMessage").textContent = error.message;
-    } finally { URL.revokeObjectURL(url); }
+    } finally { if (url) URL.revokeObjectURL(url); }
   });
   on(referenceCanvas, "click", (event) => {
     if (!reference) return;

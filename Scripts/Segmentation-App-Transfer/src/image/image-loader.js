@@ -1,3 +1,4 @@
+import { readSource, prepareSource } from "./prepare-source.js";
 import { createInteractionReset } from "../state/interaction-reset.js";
 
 /** Own image replacement workflow, asynchronous loading, decoding, and processing. */
@@ -16,7 +17,6 @@ export function createImageLoader({
   selection,
   render,
   view,
-  FileReaderType = globalThis.FileReader,
   ImageType = globalThis.Image,
   alertFn = globalThis.alert,
   nextFrame = () =>
@@ -25,7 +25,6 @@ export function createImageLoader({
   const { imageInput, emptyState } = elements;
   const interactionReset = createInteractionReset(interactionState);
   let activeRequestId = 0;
-  let pendingRollback = null;
 
   function hasAnnotationState() {
     return (
@@ -62,12 +61,6 @@ export function createImageLoader({
       return false;
     }
     modal.closeConfirm();
-    pendingRollback ||= {
-      image: { ...imageState },
-      annotations: annotationState.annotations,
-      labelColors: new Map(labelColorAssignments),
-    };
-    clearAnnotations();
     return start(file);
   }
 
@@ -77,141 +70,50 @@ export function createImageLoader({
   }
 
   function start(file) {
-    if (typeof FileReaderType !== "function" || typeof ImageType !== "function") {
-      throw new Error("Image loading requires FileReader and Image constructors.");
-    }
-    pendingRollback ||= {
-      image: { ...imageState },
-      annotations: annotationState.annotations,
-      labelColors: new Map(labelColorAssignments),
-    };
-    labelColorAssignments.clear();
-    render.resetTimer();
     const requestId = ++activeRequestId;
-    const isCurrentRequest = () => requestId === activeRequestId;
-    function fail(message, detail) {
-      if (!isCurrentRequest()) return;
-      const revision = imageState.revision;
-      Object.assign(imageState, pendingRollback.image, { revision: revision + 1 });
-      annotationState.annotations = pendingRollback.annotations;
-      labelColorAssignments.clear();
-      for (const [label, color] of pendingRollback.labelColors) labelColorAssignments.set(label, color);
-      pendingRollback = null;
-      render.setLoadState("error", 100, message);
+    const isCurrent = () => requestId === activeRequestId;
+    render.setLoadState("loading", 5, "Reading image file...", { autoHideSuccess: false });
+    // Keep the previous document, including its timer and drafts, until the
+    // complete replacement has decoded and passed validation.
+    async function prepareAndInstall() {
+      const source = await readSource(file);
+      if (!isCurrent()) return;
+      render.setLoadState("loading", 65, "Decoding and analyzing image...", { autoHideSuccess: false });
+      await nextFrame();
+      if (!isCurrent()) return;
+      const prepared = await prepareSource(source, imageProcessing, { ImageType });
+      if (!isCurrent()) return;
+      render.resetTimer();
+      clearAnnotations();
+      imageCache.install(prepared);
+      const original = prepared.originalFile;
+      Object.assign(imageState, {
+        calibration: null,
+        revision: (imageState.revision || 0) + 1,
+        imageName: original.name,
+        imageSize: { width: prepared.image.width, height: prepared.image.height },
+        imageFileSizeBytes: original.size,
+        imageFileType: original.type,
+        imageLastModified: original.lastModified,
+      });
+      view.resizeCanvasToImage();
+      view.resetViewTransform();
+      if (emptyState) emptyState.style.display = "none";
       render.metadata();
+      render.setLoadState("success", 100, "Image ready.");
+      render.onImageReady?.(original);
       render.redraw();
+      render.timer();
+    }
+    void prepareAndInstall().catch(error => {
+      if (!isCurrent()) return;
+      const detail = error instanceof Error ? error.message : String(error);
+      render.setLoadState("error", 100, "Could not open the image.");
       render.onImageError?.(detail);
       alertFn(detail);
-    }
-    imageState.calibration = null;
-    imageState.revision = (imageState.revision || 0) + 1;
-    imageState.imageName = file.name || "";
-    imageState.imageFileSizeBytes = Number.isFinite(file.size) ? file.size : null;
-    imageState.imageFileType = file.type || "image/png";
-    imageState.imageLastModified = Number.isFinite(file.lastModified)
-      ? file.lastModified
-      : null;
-    render.metadata();
-    render.setLoadState("loading", 0, "Reading image file...", {
-      autoHideSuccess: false,
+    }).finally(() => {
+      if (isCurrent() && imageInput) imageInput.value = "";
     });
-    render.timer();
-
-    render.redraw();
-
-    const reader = new FileReaderType();
-    reader.onloadstart = () => {
-      if (!isCurrentRequest()) return;
-      render.setLoadState("loading", 5, "Reading image file...", {
-        autoHideSuccess: false,
-      });
-    };
-    reader.onprogress = (progressEvent) => {
-      if (!isCurrentRequest()) return;
-      if (progressEvent.lengthComputable && progressEvent.total > 0) {
-        const ratio = progressEvent.loaded / progressEvent.total;
-        render.setLoadState(
-          "loading",
-          5 + ratio * 60,
-          "Reading image file...",
-          { autoHideSuccess: false }
-        );
-      }
-    };
-    reader.onerror = () => {
-      fail("Could not read the image file.", "Could not read the selected PNG file.");
-    };
-    reader.onload = (event) => {
-      if (!isCurrentRequest()) return;
-      const imageDataUrl = event.target?.result;
-      if (typeof imageDataUrl !== "string") {
-        fail("Image read failed.", "Could not decode image file contents.");
-        return;
-      }
-      const image = new ImageType();
-      image.onload = async () => {
-        if (!isCurrentRequest()) return;
-        try {
-          render.setLoadState("loading", 72, "Decoding PNG...", {
-            autoHideSuccess: false,
-          });
-          await nextFrame();
-          const equalizedImage =
-            imageProcessing.buildHistogramEqualizedCanvas(image);
-          if (!isCurrentRequest()) return;
-
-          render.setLoadState("loading", 86, "Analyzing image...", {
-            autoHideSuccess: false,
-          });
-          await nextFrame();
-          const originalAnalysis =
-            imageProcessing.buildImageAnalysisData(image);
-          const equalizedAnalysis = equalizedImage
-            ? imageProcessing.buildImageAnalysisData(equalizedImage)
-            : null;
-          if (!isCurrentRequest()) return;
-
-          render.setLoadState("loading", 98, "Rendering image...", {
-            autoHideSuccess: false,
-          });
-          await nextFrame();
-          if (!isCurrentRequest()) return;
-          imageCache.install({
-            image,
-            equalizedImage,
-            originalAnalysis,
-            equalizedAnalysis,
-          });
-          imageState.imageName = file.name;
-          imageState.imageSize = {
-            width: image.width,
-            height: image.height,
-          };
-          view.resizeCanvasToImage();
-          view.resetViewTransform();
-          if (emptyState) emptyState.style.display = "none";
-          render.metadata();
-          render.setLoadState("success", 100, "Image ready.");
-          render.onImageReady?.(file);
-          render.redraw();
-          render.timer();
-          pendingRollback = null;
-        } catch (error) {
-          if (!isCurrentRequest()) return;
-          const message =
-            error instanceof Error ? error.message : String(error);
-          fail("Image processing failed.", `Could not process image: ${message}`);
-        }
-      };
-      image.onerror = () => {
-        fail("PNG decode failed.", "Could not decode the selected PNG. The file may be corrupt.");
-      };
-      render.setLoadState("loading", 70, "Decoding PNG...", {
-        autoHideSuccess: false,
-      });
-      image.src = imageDataUrl;
-    };
-    reader.readAsDataURL(file);
     return true;
   }
 

@@ -6,7 +6,7 @@ import { pipeline } from "node:stream/promises";
 import { pickProjectFolder } from "./project-folder-picker.js";
 import { normalizeClassCatalog } from "../src/model/class-catalog.js";
 import { validateSessionSnapshot } from "../src/session/session-snapshot.js";
-import { validatePngBytes } from "../src/io/embedded-image-import.js";
+import { inspectSource } from "../src/image/source-format.js";
 
 const isObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const validId = value => typeof value === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(value)
@@ -28,6 +28,28 @@ const checked = (validate, ...values) => {
 const requireRevision = value => {
   if (!Number.isSafeInteger(value) || value < 0 || !Number.isSafeInteger(value + 1)) invalid("A valid expected revision is required.");
 };
+
+// Existing version 1 projects stored every original as <id>.png with no format field.
+function storedFormat(record) {
+  if (!Object.hasOwn(record, "format")) return "png";
+  if (["png", "tiff", "bmp"].includes(record.format)) return record.format;
+  invalid("The saved image format is invalid.");
+}
+
+// Keep legacy PNG paths. Namespace other formats so orphan cleanup can
+// distinguish this project's copies from originals placed in images/ by hand.
+function originalFilename(projectId, imageId, format) {
+  return format === "png" ? `${imageId}.png` : `${projectId}.${imageId}.${format}`;
+}
+
+function managedImageId(filename, projectId) {
+  if (filename.endsWith(".png")) return filename.slice(0, -4);
+  const extension = path.extname(filename);
+  if (filename.startsWith(projectId + ".") && [".tiff", ".bmp"].includes(extension)) {
+    return filename.slice(projectId.length + 1, -extension.length);
+  }
+  return null;
+}
 
 function validateSession(value, { allowEmpty = true } = {}) {
   if (!isObject(value) || value.schemaVersion !== 1 || !Number.isFinite(value.savedAt) || value.savedAt < 0) {
@@ -88,6 +110,7 @@ function validateCleanupManifest(manifest) {
     if (!record || !validId(image.id) || record.id !== image.id || !validDigest(digest)
       || record.digest !== digest || record.width !== image.width || record.height !== image.height
       || !Number.isSafeInteger(record.size) || record.size < 1) invalid("The project's image references are invalid.");
+    storedFormat(record);
     references.add(image.id);
   };
   if (manifest.batch.value !== null) validateBatch(manifest.batch.value);
@@ -258,8 +281,10 @@ export function createLocalProjectService(options = {}) {
         validateCleanupManifest(manifest);
         const images = await plainPath(path.join(directory, "images"), true, directory);
         for (const entry of await readdir(images, { withFileTypes: true })) {
-          if (entry.isFile() && /^[A-Za-z0-9_-]{1,100}\.png$/.test(entry.name)
-            && !Object.hasOwn(manifest.images, entry.name.slice(0, -4))) await unlink(path.join(images, entry.name));
+          const imageId = managedImageId(entry.name, manifest.id);
+          if (entry.isFile() && validId(imageId) && !Object.hasOwn(manifest.images, imageId)) {
+            await unlink(path.join(images, entry.name));
+          }
           if (entry.isFile() && /^upload-[a-f0-9-]+\.tmp$/.test(entry.name)) await unlink(path.join(images, entry.name));
         }
       } catch { /* Preserve damaged projects and their image files for repair. */ }
@@ -310,7 +335,8 @@ export function createLocalProjectService(options = {}) {
     const record = own(manifest.images, imageId) || staged.get(id)?.get(imageId);
     if (!record || record.id !== imageId || !validDigest(record.digest) || !validSize(record)
       || !Number.isSafeInteger(record.size) || record.size < 1) invalid("The saved image is missing or invalid.");
-    const target = await plainPath(path.join(await plainPath(path.join(folder(id), "images"), true), `${imageId}.png`));
+    const filename = originalFilename(manifest.id, imageId, storedFormat(record));
+    const target = await plainPath(path.join(await plainPath(path.join(folder(id), "images"), true), filename));
     if ((await lstat(target)).size !== record.size) invalid("The saved image size no longer matches its document.");
     return record;
   }
@@ -331,13 +357,13 @@ export function createLocalProjectService(options = {}) {
     if (next.session.value?.image) references.set(next.session.value.image.id,
       await checkImage(id, next.session.value.image, next.session.value.image.digest, previous));
     next.images = Object.fromEntries(references);
+    const removedFiles = Object.entries(previous.images)
+      .filter(([imageId]) => validId(imageId) && !references.has(imageId))
+      .map(([imageId, record]) => originalFilename(previous.id, imageId, storedFormat(record)));
     await atomicJson(path.join(folder(id), "project.json"), next);
     for (const imageId of references.keys()) staged.get(id)?.delete(imageId);
-    for (const imageId of Object.keys(previous.images)) {
-      if (!references.has(imageId)) {
-        // Removal is after publication and restricted to a validated generated filename.
-        if (validId(imageId)) await unlink(path.join(folder(id), "images", `${imageId}.png`)).catch(() => {});
-      }
+    for (const filename of removedFiles) {
+      await unlink(path.join(folder(id), "images", filename)).catch(() => {});
     }
   }
 
@@ -367,18 +393,18 @@ export function createLocalProjectService(options = {}) {
       await handle.close(); handle = null;
       const digest = hash.digest("hex");
       if (!size || digest !== expected) invalid("The uploaded image checksum does not match its original bytes.");
-      // At most one encoded image is materialized for the shared PNG integrity check.
-      const dimensions = checked(validatePngBytes, await readFile(temporary));
-      if (dimensions.width !== width || dimensions.height !== height) invalid("The PNG dimensions do not match its metadata.");
+      const source = checked(inspectSource, await readFile(temporary));
+      if (source.width !== width || source.height !== height) invalid("The image dimensions do not match its metadata.");
       const manifest = await readManifest(id);
       const previous = own(manifest.images, imageId) || staged.get(id)?.get(imageId);
       if (previous) {
-        if (previous.digest !== digest || previous.size !== size || previous.width !== width || previous.height !== height) {
+        if (previous.digest !== digest || previous.size !== size || previous.width !== width || previous.height !== height
+          || storedFormat(previous) !== source.format) {
           throw failure(409, "ProjectImageIdentityError", "An image identity cannot be reused for different bytes or dimensions.");
         }
         await imageRecord(id, imageId, manifest);
       } else {
-        const target = path.join(directory, `${imageId}.png`);
+        const target = path.join(directory, originalFilename(manifest.id, imageId, source.format));
         // An orphan from an interrupted upload may exist; only identical bytes may reuse it.
         try {
           await plainPath(target);
@@ -390,7 +416,7 @@ export function createLocalProjectService(options = {}) {
           await rename(temporary, target);
         }
         if (!staged.has(id)) staged.set(id, new Map());
-        staged.get(id).set(imageId, { id: imageId, digest, size, width, height });
+        staged.get(id).set(imageId, { id: imageId, digest, size, width, height, format: source.format });
       }
       return { digest, size };
     } finally {
@@ -492,10 +518,11 @@ export function createLocalProjectService(options = {}) {
               throw failure(404, "ProjectStorageDataError", "The saved image is missing.");
             }
             const image = await imageRecord(id, imageId, manifest);
-            response.writeHead(200, { "Content-Type": "image/png", "Content-Length": image.size,
+            const format = storedFormat(image);
+            response.writeHead(200, { "Content-Type": `image/${format}`, "Content-Length": image.size,
               "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "X-Image-Digest": image.digest });
             if (request.method === "HEAD") response.end();
-            else await pipeline(createReadStream(path.join(folder(id), "images", `${imageId}.png`)), response);
+            else await pipeline(createReadStream(path.join(folder(id), "images", originalFilename(manifest.id, imageId, format))), response);
           });
         } else throw failure(405, "ProjectRequestError", "Unsupported image operation.");
         return;

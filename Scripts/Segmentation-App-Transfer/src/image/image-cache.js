@@ -1,10 +1,32 @@
+import { DEFAULT_IMAGE_DISPLAY } from "../config/settings.js";
+
 /** Own derived image sources and smart-snap analysis cache selection. */
 export function createImageCache({
   imageState,
   settingsState,
   imageProcessing,
 }) {
+  const previews = new WeakMap();
+
   function getActiveImageSource() {
+    const native = imageState.native;
+    if (native) {
+      const { blackLevel, whiteLevel, imageContrast, sourceEnhancement } = settingsState;
+      if (blackLevel === 0 && whiteLevel === 65535 && imageContrast === 100 && sourceEnhancement === "none") {
+        return imageState.image;
+      }
+      const key = [blackLevel, whiteLevel, imageContrast, sourceEnhancement].join("/");
+      let preview = previews.get(native);
+      if (!preview) {
+        preview = {};
+        previews.set(native, preview);
+      }
+      if (preview.key !== key) {
+        imageProcessing.buildNativeCanvas(native, settingsState, preview);
+        preview.key = key;
+      }
+      return preview.canvas;
+    }
     return settingsState.sourceEnhancement === "hist-eq" &&
       imageState.equalizedImage
       ? imageState.equalizedImage
@@ -12,6 +34,10 @@ export function createImageCache({
   }
 
   function getActiveAnalysis() {
+    if (imageState.native) {
+      imageState.imageAnalysisOriginal ??= imageProcessing.buildNativeAnalysis(imageState.native);
+      return imageState.imageAnalysisOriginal;
+    }
     return settingsState.sourceEnhancement === "hist-eq" &&
       imageState.imageAnalysisEqualized
       ? imageState.imageAnalysisEqualized
@@ -19,7 +45,7 @@ export function createImageCache({
   }
 
   function ensure() {
-    if (!imageState.image) return;
+    if (!imageState.image || imageState.native) return;
     if (!imageState.imageAnalysisOriginal) {
       imageState.imageAnalysisOriginal =
         imageProcessing.buildImageAnalysisData(imageState.image);
@@ -42,11 +68,16 @@ export function createImageCache({
 
   function install({
     image,
-    equalizedImage,
-    originalAnalysis,
-    equalizedAnalysis,
+    native = null,
+    originalFile = null,
+    equalizedImage = null,
+    originalAnalysis = null,
+    equalizedAnalysis = null,
   }) {
+    Object.assign(settingsState, DEFAULT_IMAGE_DISPLAY);
     imageState.image = image;
+    imageState.originalFile = originalFile;
+    imageState.native = native;
     imageState.equalizedImage = equalizedImage;
     imageState.imageAnalysisOriginal = originalAnalysis;
     imageState.imageAnalysisEqualized = equalizedAnalysis;

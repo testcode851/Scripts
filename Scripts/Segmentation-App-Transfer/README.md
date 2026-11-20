@@ -107,24 +107,27 @@ For a complete backup, finish saving, stop the server, and copy the whole projec
 folder, including `project.json` and `images`. Browse to that folder to reopen it
 after moving or copying it, including on another computer. Separate folders can
 have the same name. Concurrent app servers cannot write to the same project folder.
-Continue using dataset exports to share PNGs, annotation JSON, and masks with other tools.
+Use dataset exports to share original PNG, TIFF, and BMP files, annotation JSON, and masks with other tools.
 
 ## Application Files and Data
 
 - Start the app with `npm run dev`; do not open `index.html` directly.
-- PNG images and annotation JSON files are selected through the application UI.
+- **Open** accepts PNG images, single-page unsigned 16-bit grayscale TIFFs (`.tif` and
+  `.tiff`), and uncompressed 8-bit palette or 24-bit RGB bitmaps (`.bmp`). An 8-bit
+  BMP can use a grayscale or color palette. Both BMP types use the existing 8-bit
+  contrast and edge-snapping controls. Use **Open JSON** for annotation documents.
 - Annotation editing and rendering happen locally in the browser.
 - LLNL and COCO annotation JSON exports include a top-level `image_base64` field
   containing the original loaded image file's Base64 bytes, without a data URL
   prefix. Display adjustments and annotations are not baked into this image.
   The value is `null` for annotation-only documents with no loaded image. This is
   an app-specific extension to COCO; the existing annotation fields are unchanged.
-  Importing either format restores this embedded PNG together with its
+  Importing either format restores the embedded PNG, TIFF, or BMP together with its
   annotations and calibration. Missing or `null` image data keeps the existing
   annotation-only import behavior. Invalid image data or mismatched dimensions
   rejects the import before replacing the current document. Embedded COCO JSON
   must identify exactly one image. Replacing the image clears old undo history,
-  as with a PNG upload; importing the same image bytes preserves annotation undo.
+  as with an image upload; importing the same image bytes preserves annotation undo.
 - Analytics sends the selected binary mask to the local Node server, which
   runs the existing Python width engine. It also sends the original image raster
   to that same local server to generate the benchmark's original Python figure.
@@ -132,6 +135,33 @@ Continue using dataset exports to share PNGs, annotation JSON, and masks with ot
   them to an external service. CSV, PNG, and JSON are saved only when exported.
 - Keep the terminal open while using the application.
 - Press `Ctrl+C` in the terminal when finished.
+
+## Tracing 16-bit images
+
+Open the original TIFF or PNG. In **Brightness / Contrast**, the observed brightness
+range shows the native values in the image. Enter a black level and a higher white
+level to spread a narrow range over the display. For example, levels 30000 and
+30008 make an eight-count difference visible. **Histogram Equalization** also uses
+the native samples. A project saves these settings with each image.
+
+On 16-bit TIFFs and PNGs, Smart Snap compares brightness on either side of a
+possible boundary and measures noise near the cursor. An isolated bright or dark
+pixel has little influence on the result. Raise **Edge threshold** to require a
+clearer boundary, or lower it to pick up weaker edges with a greater chance of
+snapping to noise. Changing the black and white levels affects the view only.
+Masks are rasterized from annotation geometry on the original pixel grid, and
+Width Analytics measures the selected mask.
+
+TIFF import supports uncompressed, LZW, Deflate and PackBits data, strips or tiles,
+both byte orders, and TIFF orientation tags. The brightness scale runs from dark
+to light, including for TIFFs that encode white as zero. Stacks and multichannel, signed or
+floating-point TIFF images are outside the supported format. Image metadata stays
+in the preserved original. Analytical calibration continues to use the scale or
+reference distance set in the app.
+
+Local projects accept original files up to 256 MiB by default. The native decoder
+limits each decoded raster or image block to 512 MiB. Width Analytics has its own
+image-size limits, listed below.
 
 ## Main Runtime Structure
 
@@ -167,11 +197,12 @@ hiding or leaving the page requests an immediate save. Browser shutdown cannot
 guarantee completion of that last request.
 
 Recovery includes the original image bytes, full-precision annotations and curve
-data, labels and colors, calibration, image names and dimensions, fixed polygon
+data, labels and colors, calibration, per-image contrast and mask display settings,
+image names and dimensions, fixed polygon
 draft points, and elapsed annotation time. Annotation-only JSON imports can also
 be recovered before loading an image. The timer returns paused. While running, it
 marks elapsed time for saving every 15 seconds; the same 30-second save schedule
-applies. Undo history, selection, pan/zoom, display settings,
+applies. Undo history, selection, pan/zoom,
 unconfirmed label text, pointer previews, active drags, rectangle/ellipse drafts,
 and analytics results are not restored.
 
@@ -188,8 +219,8 @@ project backups and annotation exports separately.
 ## Image batches
 
 Use **Images** in the toolbar to expand the image drawer beside the drawing tools.
-Choose **Add images** to select multiple PNGs or LLNL/COCO JSON files containing
-embedded PNGs. The current loaded image and its annotations are included when
+Choose **Add images** to select multiple PNGs, TIFFs, BMPs, or LLNL/COCO JSON files containing
+embedded images. The current loaded image and its annotations are included when
 starting a batch. Annotation-only JSON still uses **Open JSON** on the selected image.
 
 The drawer overlays the left side of the canvas without moving or resizing the image.
@@ -220,12 +251,12 @@ the editor. A save or decode failure keeps the current image open. Finish or can
 active drags, rectangle/ellipse placement, and label dialogs before switching.
 Undo history is cleared at image switches, as with an ordinary image replacement;
 it never applies one image's edits to another. Analytics remains explicitly started
-with Analyze widths. While a batch is active, Open adds a PNG to that batch;
+with Analyze widths. While a batch is active, Open adds a PNG, TIFF, or BMP to that batch;
 Open JSON imports onto the current image unless it embeds a different image, which
 is added as another batch item.
 
 **Export batch** downloads a ZIP for all images, completed images, or the current
-image. Select original PNGs, normal binary mask PNGs, and LLNL or COCO JSON.
+image. Select original images in their imported format, binary mask PNGs, and LLNL or COCO JSON.
 It uses the existing serializers and mask renderer, including the COCO ellipse
 limitation and the original image bytes in `image_base64`. Hidden/filtered shapes
 remain included. Quality warnings and omitted ellipses are disclosed before
@@ -387,7 +418,7 @@ COCO class-validation rules continue to apply.
 
 ## Width Analytics
 
-1. In **Annotation**, load the original PNG and draw or import its annotations.
+1. In **Annotation**, load the original PNG, TIFF, or BMP and draw or import its annotations.
    Imported dimensions must match the original image.
 2. Open **Analytics** and select all labels or one label to measure.
 3. Use **Benchmark default**, enter a known **µm per pixel**, or calibrate a known
@@ -514,9 +545,8 @@ displays an explanation without changing annotations.
 
 ### Runtime distribution
 
-This runtime copy excludes development tests, QA scripts, generated sample masks,
-and benchmark output reports. The application source, styles, local API server,
-Python adapter, and benchmark package are retained.
+The distribution includes the application source, styles, local API server,
+Python adapter, and strand-width benchmark package.
 
 Keep every Python source file under `diw_width_extraction_benchmark/pdtools/`.
 Analytics includes their fingerprints in saved analysis bundles, including modules

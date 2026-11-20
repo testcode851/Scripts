@@ -233,7 +233,7 @@ export function createProjectController({
       message = "The saved batch could not be opened. Your existing session has been kept. " + error.message;
     } finally { initialized = true; publish(); }
   }
-  function addFiles(files) {
+  function addFiles(files, prepare = prepareFile) {
     const selected = Array.from(files || []);
     if (!selected.length) return Promise.resolve(false);
     return exclusive(async () => {
@@ -254,7 +254,7 @@ export function createProjectController({
         await reportProgress({ phase: "preparing", completed: additions.length, total: selected.length, fileName: file.name || "Unnamed image" });
         let entry;
         try {
-          entry = { ...await prepareFile(file), id: createId() };
+          entry = { ...await prepare(file), id: createId() };
           target ||= entry;
           // Local disk storage stages one original at a time; only the first image
           // keeps its Blob for the editor. The queue still publishes atomically.

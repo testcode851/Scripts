@@ -86,7 +86,7 @@ export function createLocalProjectClient({
     }
     if (uploaded.get(image.id) !== signature) {
       const result = await json(`images/${idPath(image.id)}`, { method: "PUT", body: image.blob,
-        headers: { "Content-Type": "image/png", "X-Image-Width": String(image.width),
+        headers: { "Content-Type": image.blob.type || "application/octet-stream", "X-Image-Width": String(image.width),
           "X-Image-Height": String(image.height), "X-Image-Digest": hash } });
       if (result.digest !== hash || result.size !== image.blob.size) throw new Error("The saved image failed byte verification.");
       uploaded.set(image.id, signature);

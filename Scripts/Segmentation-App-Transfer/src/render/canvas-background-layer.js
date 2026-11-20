@@ -19,7 +19,7 @@ export function createCanvasBackgroundLayer({
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.save();
     context.imageSmoothingEnabled = false;
-    context.filter = `contrast(${settingsState.imageContrast}%)`;
+    context.filter = imageState.native ? "none" : `contrast(${settingsState.imageContrast}%)`;
     context.drawImage(
       imageSource,
       viewState.viewOffsetX,

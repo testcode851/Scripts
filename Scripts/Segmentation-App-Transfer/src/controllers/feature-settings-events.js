@@ -17,10 +17,14 @@ export function bindFeatureSettingsEvents({
     });
   }
 
-  function bindRangeInput(input, settingName) {
+  function bindRangeInput(input, settingName, { display = false } = {}) {
     const handleUpdate = (event) => {
       const value = Number(event.target.value);
       if (!Number.isFinite(value)) return;
+      if (display) {
+        if (value !== settingsState[settingName]) actions.applySettings({ [settingName]: value });
+        return;
+      }
       settingsState[settingName] = value;
       actions.syncAdjustmentLabels();
       actions.redraw();
@@ -28,6 +32,20 @@ export function bindFeatureSettingsEvents({
     listen(input, "input", handleUpdate);
     listen(input, "change", handleUpdate);
   }
+
+  function bindWindowLevel(input, settingName) {
+    listen(input, "change", () => {
+      const value = input.valueAsNumber;
+      if (!Number.isInteger(value) || value < Number(input.min) || value > Number(input.max)) {
+        input.value = String(settingsState[settingName]);
+        return;
+      }
+      actions.applySettings({ [settingName]: value });
+    });
+  }
+
+  bindWindowLevel(elements.blackLevelInput, "blackLevel");
+  bindWindowLevel(elements.whiteLevelInput, "whiteLevel");
 
   listen(elements.gridToggle, "change", (event) => {
     actions.applySettings({ gridEnabled: event.target.checked });
@@ -66,18 +84,18 @@ export function bindFeatureSettingsEvents({
     const presetId = elements.snapPresetSelect?.value || "balanced";
     const preset = SNAP_PRESETS[presetId];
     if (preset) {
-      actions.applySettings(preset, { presetId });
+      actions.applySettings({ ...preset, blackLevel: settingsState.blackLevel, whiteLevel: settingsState.whiteLevel }, { presetId });
     }
   });
   listen(elements.resetSettingsButton, "click", () => {
     actions.applySettings(DEFAULT_SETTINGS, { presetId: "balanced" });
   });
 
-  bindRangeInput(elements.imageContrastInput, "imageContrast");
+  bindRangeInput(elements.imageContrastInput, "imageContrast", { display: true });
   bindRangeInput(elements.gridOpacityInput, "gridOpacity");
   bindRangeInput(elements.snapEdgeThresholdInput, "snapEdgeThreshold");
-  bindRangeInput(elements.maskContrastInput, "maskContrast");
-  bindRangeInput(elements.maskOpacityInput, "maskOpacity");
+  bindRangeInput(elements.maskContrastInput, "maskContrast", { display: true });
+  bindRangeInput(elements.maskOpacityInput, "maskOpacity", { display: true });
 
   if (elements.outputFormatSelect) {
     settingsState.outputFormat =

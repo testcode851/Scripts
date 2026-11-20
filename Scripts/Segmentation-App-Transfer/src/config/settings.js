@@ -1,5 +1,14 @@
 import { clamp } from "../geometry/math.js";
 
+export const DEFAULT_IMAGE_DISPLAY = Object.freeze({
+  blackLevel: 0,
+  whiteLevel: 65535,
+  sourceEnhancement: "none",
+  imageContrast: 100,
+  maskContrast: 100,
+  maskOpacity: 100,
+});
+
 export const DEFAULT_SETTINGS = Object.freeze({
   gridEnabled: false,
   snapEnabled: true,
@@ -15,10 +24,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   gridSize: 20,
   gridOpacity: 40,
   gridMajorEvery: 5,
-  sourceEnhancement: "none",
-  imageContrast: 100,
-  maskContrast: 100,
-  maskOpacity: 100,
+  ...DEFAULT_IMAGE_DISPLAY,
 });
 
 export const SNAP_PRESETS = Object.freeze({
@@ -67,6 +73,7 @@ export function normalizeSettings(inputSettings = {}) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
   };
+  const blackLevel = clamp(Math.round(toNumber(settings.blackLevel, 0)), 0, 65534);
 
   return {
     gridEnabled: Boolean(settings.gridEnabled),
@@ -100,6 +107,8 @@ export function normalizeSettings(inputSettings = {}) {
       20
     ),
     sourceEnhancement: settings.sourceEnhancement === "hist-eq" ? "hist-eq" : "none",
+    blackLevel,
+    whiteLevel: clamp(Math.round(toNumber(settings.whiteLevel, 65535)), blackLevel + 1, 65535),
     imageContrast: clamp(
       Math.round(toNumber(settings.imageContrast, DEFAULT_SETTINGS.imageContrast)),
       50,

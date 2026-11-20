@@ -8,6 +8,7 @@ import {
 } from "../model/annotation.js";
 import { inspectAnnotationQuality } from "../quality/annotation-quality.js";
 import { validateCatalogAnnotations } from "../model/class-catalog.js";
+import { rawBase64 } from "./image-base64.js";
 
 /**
  * Owns browser downloads for annotation documents and segmentation masks.
@@ -74,16 +75,12 @@ export function createDownloadService(options) {
     return true;
   }
 
-  function getBaseName() {
-    return imageState.imageName.replace(/\.png$/i, "") || "annotation";
+  function sourceName() {
+    return imageState.originalFile?.name || imageState.imageName;
   }
 
-  function getImageBase64() {
-    // The loader keeps the original file data URL; avoid canvas re-encoding or display adjustments.
-    const source = imageState.image?.src;
-    if (typeof source !== "string") return null;
-    const prefix = /^data:[^,]*;base64,/i.exec(source);
-    return prefix ? source.slice(prefix[0].length) : null;
+  function getBaseName() {
+    return sourceName().replace(/\.(png|tiff?|bmp)$/i, "") || "annotation";
   }
 
   function getAnnotationsForExport() {
@@ -96,41 +93,34 @@ export function createDownloadService(options) {
     });
   }
 
-  function buildLlnlPayload() {
-    return exportLlnlDocument({
+  async function buildJsonPayload(format) {
+    // Capture the same document, geometry and original before any asynchronous read.
+    const original = imageState.originalFile;
+    if (imageState.image && !original) throw new Error("The original image file is unavailable for export.");
+    const serialize = format === "coco" ? exportCocoDocument : exportLlnlDocument;
+    const payload = serialize({
       annotations: getAnnotationsForExport(),
-      imageName: imageState.imageName,
-      imageBase64: getImageBase64(),
-      imageSize: imageState.imageSize,
-      displaySize: { width: canvas.width, height: canvas.height },
-      annotationTiming: getAnnotationTimingMetadata(),
-      calibration: imageState.calibration,
-    });
-  }
-
-  function buildCocoPayload() {
-    return exportCocoDocument({
-      annotations: getAnnotationsForExport(),
-      imageName: imageState.imageName,
-      imageBase64: getImageBase64(),
+      imageName: sourceName(),
       imageSize: imageState.imageSize,
       annotationTiming: getAnnotationTimingMetadata(),
       calibration: imageState.calibration,
-      classCatalog: getClassCatalog(),
+      ...(format === "coco" ? { classCatalog: getClassCatalog() } : { displaySize: { width: canvas.width, height: canvas.height } }),
     });
+    if (original) payload.image_base64 = rawBase64(new Uint8Array(await original.arrayBuffer()));
+    return payload;
   }
 
   function exportJson() {
     return performJsonExport(null, ++exportRequest);
   }
 
-  function performJsonExport(reviewed, request) {
+  async function performJsonExport(reviewed, request) {
     if (imageState.imageLoadStatus === "loading") {
       alertFn("Wait for the image to finish loading before exporting.");
       return null;
     }
     if (!imageState.imageName) {
-      alertFn("Upload a PNG before exporting.");
+      alertFn("Open an image before exporting.");
       return null;
     }
 
@@ -152,20 +142,23 @@ export function createDownloadService(options) {
     }
 
     stopAnnotationTimer({ markEnded: true });
+    const original = imageState.originalFile;
+    const name = getBaseName();
     let payload;
     try {
-      payload = outputFormat === "coco" ? buildCocoPayload() : buildLlnlPayload();
+      payload = await buildJsonPayload(outputFormat);
     } catch (error) {
       alertFn(error instanceof Error ? error.message : String(error));
       return null;
     }
+    if (request !== exportRequest || original !== imageState.originalFile || imageState.imageLoadStatus === "loading") return null;
     const blob = new BlobType([JSON.stringify(payload, null, 2)], {
       type: "application/json",
     });
     const url = URLType.createObjectURL(blob);
     const link = documentRoot.createElement("a");
     link.href = url;
-    link.download = `${getBaseName()}${outputFormat === "coco" ? "-coco" : ""}.json`;
+    link.download = `${name}${outputFormat === "coco" ? "-coco" : ""}.json`;
     link.click();
     URLType.revokeObjectURL(url);
     return payload;
@@ -181,7 +174,7 @@ export function createDownloadService(options) {
       return null;
     }
     if (!imageState.imageSize) {
-      alertFn("Upload a PNG before exporting a mask.");
+      alertFn("Open an image before exporting a mask.");
       return null;
     }
 
@@ -205,8 +198,8 @@ export function createDownloadService(options) {
   }
 
   return {
-    buildCocoPayload,
-    buildLlnlPayload,
+    buildCocoPayload: () => buildJsonPayload("coco"),
+    buildLlnlPayload: () => buildJsonPayload("llnl"),
     exportJson,
     exportMask,
     getAnnotationsForExport,

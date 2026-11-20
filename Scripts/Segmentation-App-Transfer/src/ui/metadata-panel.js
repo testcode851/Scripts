@@ -16,7 +16,7 @@ export function createImageMetadataPanel({ elements, imageState, renderInvalidat
       ? `${imageState.imageSize.width} x ${imageState.imageSize.height}px`
       : "-";
     const fileSize = formatBytes(imageState.imageFileSizeBytes);
-    const fileType = imageState.imageFileType || (imageState.image ? "image/png" : "-");
+    const fileType = imageState.imageFileType || imageState.originalFile?.type || "-";
     const updated = formatImageTimestamp(imageState.imageLastModified);
     const nextKey = [name, dimensions, fileSize, fileType, updated].join("|");
     if (!renderInvalidation.hasChanged("image-metadata", nextKey)) {

@@ -29,14 +29,14 @@
       dialog toggle buttons, zoom controls, export.
     -->
     <header class="toolbar" role="toolbar" aria-label="Annotation actions">
-      <label class="toolbar-btn file-input" title="Upload PNG image">
+      <label class="toolbar-btn file-input" title="Open a PNG, 16-bit grayscale TIFF, or uncompressed 8-bit or 24-bit BMP">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
           <circle cx="9" cy="10" r="2"/>
           <path d="M21 15l-5-5L5 21"/>
         </svg>
         <span>Open</span>
-        <input id="imageInput" type="file" accept="image/png" />
+        <input id="imageInput" type="file" accept="image/png,.png,image/tiff,.tif,.tiff,image/bmp,.bmp" />
       </label>
       <label class="toolbar-btn file-input" title="Open JSON annotations and embedded image">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -311,7 +311,7 @@
           <label for="projectName">Batch name</label>
           <input id="projectName" type="text" maxlength="160" value="Image batch" />
           <button id="projectAddImages" type="button">Add images</button>
-          <input id="projectImageInput" type="file" accept="image/png,.png,application/json,.json" multiple hidden />
+          <input id="projectImageInput" type="file" accept="image/png,.png,image/tiff,.tif,.tiff,image/bmp,.bmp,application/json,.json" multiple hidden />
           <label for="projectSearch">Find image</label>
           <input id="projectSearch" type="search" placeholder="Filename" />
           <label for="projectFilter">Show</label>
@@ -322,7 +322,7 @@
           </select>
         </div>
         <div id="projectImageList" class="project-image-list" aria-label="Images in this batch"></div>
-        <p id="projectEmptyList" class="project-empty">Add PNG images or JSON files containing an embedded image to begin a batch.</p>
+        <p id="projectEmptyList" class="project-empty">Add PNG, TIFF, BMP, or JSON files with an embedded image to begin a batch.</p>
         <div class="project-drawer-footer">
           <span id="projectProgress">No images yet</span>
           <div id="projectImportProgress" class="project-import-progress" hidden>
@@ -346,7 +346,7 @@
           aria-label="Image annotation canvas"
         ></canvas>
         <div id="emptyState" class="empty-state">
-          Upload a PNG to get started.
+          Open a PNG, TIFF, or BMP to get started.
         </div>
         <div
           id="canvasLabelEditor"
@@ -567,6 +567,11 @@
               <option value="hist-eq">Histogram Equalization</option>
             </select>
           </label>
+          <div id="nativeWindowControls" hidden>
+            <p id="nativeRangeOutput"></p>
+            <label>Black level <input id="blackLevel" type="number" min="0" max="65534" step="1" value="0" /></label>
+            <label>White level <input id="whiteLevel" type="number" min="1" max="65535" step="1" value="65535" /></label>
+          </div>
           <label>
             Image contrast
             <input id="imageContrast" type="range" min="50" max="200" step="5" value="100" />
@@ -625,7 +630,8 @@
           <label>Border threshold <input id="snapBorderThreshold" type="number" min="0" max="40" step="1" value="5" /></label>
           <label>
             Edge threshold
-            <input id="snapEdgeThreshold" type="range" min="0" max="255" step="5" value="40" />
+            <input id="snapEdgeThreshold" type="range" min="0" max="255" step="5" value="40"
+                   title="Higher values require a stronger boundary. On 16-bit images, Smart Snap also accounts for nearby noise." />
             <output id="snapEdgeThresholdValue">40</output>
           </label>
           <label>Extrema delta <input id="snapExtremaDelta" type="number" min="0" max="255" step="1" value="12" /></label>
@@ -728,7 +734,7 @@
           <summary>Export</summary>
           <ul>
             <li>Export JSON saves annotations and the original image. Export Mask saves a binary PNG. Invert Mask flips foreground/background values.</li>
-            <li>Open JSON restores annotations and its embedded image. For annotation-only JSON, load the matching PNG separately.</li>
+            <li>Open JSON restores annotations and its embedded image. For annotation-only JSON, load the matching source image separately.</li>
           </ul>
         </details>
         <details class="tips-group">

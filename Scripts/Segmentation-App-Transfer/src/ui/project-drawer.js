@@ -172,7 +172,7 @@ export function createProjectDrawer({
     set(elements.EmptyList, "hidden", shown.length > 0);
     set(elements.EmptyList, "textContent", all.length
       ? "No images match this search and filter."
-      : "Add PNG images or JSON files containing an embedded image to begin a batch.");
+      : "Add PNG, TIFF, BMP, or JSON files with an embedded image to begin a batch.");
   }
 
   function render(nextState = {}) {

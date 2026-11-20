@@ -6,6 +6,8 @@ import { inspectAnnotationQuality } from "../quality/annotation-quality.js";
 import { validateSessionSnapshot } from "../session/session-snapshot.js";
 import { createAnnotationTimer } from "../ui/annotation-timer.js";
 import { exportCocoDocument, exportLlnlDocument } from "./annotation-export.js";
+import { inspectSource } from "../image/source-format.js";
+import { rawBase64 } from "./image-base64.js";
 
 const encoder = new TextEncoder();
 const pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
@@ -81,10 +83,11 @@ function prepareExport({
     if (session?.schemaVersion !== 1 || !(image?.blob instanceof Blob)
       || !Number.isSafeInteger(image.width) || image.width <= 0
       || !Number.isSafeInteger(image.height) || image.height <= 0) {
-      throw new Error("An exported image is missing its saved PNG or dimensions.");
+      throw new Error("An exported image is missing its saved original or dimensions.");
     }
     const snapshot = validateSessionSnapshot(session.snapshot, image);
-    const imageName = snapshot.imageName || image.fileName || "image.png";
+    const fallbackFormat = /^image\/(png|tiff|bmp)$/.exec(image.blob.type)?.[1] || "png";
+    const imageName = image.fileName || snapshot.imageName || `image.${fallbackFormat}`;
     const displaySize = record.displaySize || snapshot.imageSize;
     if (!Number.isSafeInteger(displaySize.width) || displaySize.width <= 0
       || !Number.isSafeInteger(displaySize.height) || displaySize.height <= 0) {
@@ -157,15 +160,6 @@ function verifyPng(bytes, size, name) {
   }
 }
 
-function rawBase64(bytes) {
-  // Whole three-byte chunks avoid padding between chunks and large argument lists.
-  const parts = [];
-  for (let start = 0; start < bytes.length; start += 24576) {
-    parts.push(btoa(String.fromCharCode(...bytes.subarray(start, start + 24576))));
-  }
-  return parts.join("");
-}
-
 function maskBytes(canvas, size) {
   if (!canvas || typeof canvas.toDataURL !== "function") {
     throw new Error("Mask rendering is not available in this browser.");
@@ -194,7 +188,10 @@ export async function buildProjectExport(options) {
   };
   for (const item of batch.prepared) {
     const bytes = new Uint8Array(await item.blob.arrayBuffer());
-    verifyPng(bytes, item.snapshot.imageSize, `Image "${item.imageName}"`);
+    const source = inspectSource(bytes);
+    if (source.width !== item.snapshot.imageSize.width || source.height !== item.snapshot.imageSize.height) {
+      throw new Error(`Image "${item.imageName}" does not match the saved image dimensions.`);
+    }
     if (batch.includeImages) entries.push({ name: item.files.image, data: bytes });
     if (batch.includeJson) {
       item.payload.image_base64 = rawBase64(bytes);

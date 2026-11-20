@@ -1,9 +1,13 @@
+import { DEFAULT_IMAGE_DISPLAY } from "../config/settings.js";
+import { getNativeBrightnessRange } from "../image/image-processing.js";
+
 /**
  * Owns form synchronization and the application-level render fan-out.
  */
 export function createAppPresenter(options) {
   const {
     controls,
+    imageState,
     settingsState,
     viewState,
     interactionState,
@@ -17,7 +21,11 @@ export function createAppPresenter(options) {
     requestCanvasRender,
     requestSelectionCanvasRender = requestCanvasRender,
     onRedraw = () => {},
+    onDisplayChange = () => {},
   } = options;
+  const displayKeys = Object.keys(DEFAULT_IMAGE_DISPLAY);
+  let syncedImage;
+  let syncedDisplay = {};
 
   function syncControlValues() {
     const values = {
@@ -36,6 +44,9 @@ export function createAppPresenter(options) {
       snapEdgeThresholdInput: ["value", String(settingsState.snapEdgeThreshold)],
       snapExtremaDeltaInput: ["value", String(settingsState.snapExtremaDelta)],
       sourceEnhancementSelect: ["value", settingsState.sourceEnhancement],
+      nativeWindowControls: ["hidden", !imageState?.native],
+      blackLevelInput: ["value", String(settingsState.blackLevel)],
+      whiteLevelInput: ["value", String(settingsState.whiteLevel)],
       imageContrastInput: ["value", String(settingsState.imageContrast)],
       maskContrastInput: ["value", String(settingsState.maskContrast)],
       maskOpacityInput: ["value", String(settingsState.maskOpacity)],
@@ -43,6 +54,14 @@ export function createAppPresenter(options) {
     Object.entries(values).forEach(([name, [property, value]]) => {
       if (controls[name]) controls[name][property] = value;
     });
+    if (controls.blackLevelInput) controls.blackLevelInput.max = String(settingsState.whiteLevel - 1);
+    if (controls.whiteLevelInput) controls.whiteLevelInput.min = String(settingsState.blackLevel + 1);
+    if (imageState?.native && controls.nativeRangeOutput) {
+      const { minimum, maximum } = getNativeBrightnessRange(imageState.native);
+      controls.nativeRangeOutput.textContent = `Image brightness range ${minimum}–${maximum}`;
+    }
+    syncedImage = imageState?.image;
+    syncedDisplay = Object.fromEntries(displayKeys.map(key => [key, settingsState[key]]));
   }
 
   function syncAdjustmentLabels() {
@@ -66,6 +85,10 @@ export function createAppPresenter(options) {
   }
 
   function redraw() {
+    if (syncedImage !== imageState?.image || displayKeys.some(key => syncedDisplay[key] !== settingsState[key])) {
+      syncControlValues();
+      syncAdjustmentLabels();
+    }
     renderDomPanels();
     normalizeSelection();
     requestCanvasRender();
@@ -89,6 +112,7 @@ export function createAppPresenter(options) {
 
   function applySettings(settingsPatch, options = {}) {
     const normalized = normalizeSettings({ ...settingsState, ...settingsPatch });
+    const displayChanged = displayKeys.some(key => settingsState[key] !== normalized[key]);
     Object.keys(defaultSettings).forEach((key) => {
       settingsState[key] = normalized[key];
     });
@@ -99,6 +123,7 @@ export function createAppPresenter(options) {
     }
     syncAdjustmentLabels();
     redrawView();
+    if (displayChanged && imageState?.image) onDisplayChange();
   }
 
   return {

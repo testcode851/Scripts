@@ -1,4 +1,5 @@
 import { normalizeCalibration } from "../analytics/analytics-data.js";
+import { DEFAULT_IMAGE_DISPLAY, normalizeSettings } from "../config/settings.js";
 import { getValidCurveSampling, parseCurveSampling } from "../geometry/curve-sampling.js";
 import { cloneCocoIdentity, validateCocoIdentityCollection } from "../model/coco-identity.js";
 import { normalizeEditorMetadata } from "../model/annotation-review.js";
@@ -110,6 +111,20 @@ function date(value) {
   return value;
 }
 
+function displaySettings(value) {
+  if (value === undefined) return { ...DEFAULT_IMAGE_DISPLAY };
+  if (!isObject(value)) fail("image display settings are invalid.");
+  const normalized = normalizeSettings(value);
+  const display = {};
+  for (const key of Object.keys(DEFAULT_IMAGE_DISPLAY)) {
+    if (Object.hasOwn(value, key) && value[key] !== normalized[key]) {
+      fail(`image display setting "${key}" is invalid.`);
+    }
+    display[key] = normalized[key];
+  }
+  return display;
+}
+
 /** Validate the complete saved document before installing any recovered state. */
 export function validateSessionSnapshot(snapshot, imageMeta) {
   if (!isObject(snapshot) || snapshot.version !== 1) fail("the saved format is unsupported.");
@@ -146,6 +161,7 @@ export function validateSessionSnapshot(snapshot, imageMeta) {
     imageName: text(snapshot.imageName, "Image name"),
     imageSize: size,
     calibration,
+    display: displaySettings(snapshot.display),
     annotations,
     lastPolygonLabel: text(snapshot.lastPolygonLabel, "Last polygon label"),
     lastEllipseLabel: text(snapshot.lastEllipseLabel, "Last ellipse label"),
@@ -164,7 +180,7 @@ export function validateSessionSnapshot(snapshot, imageMeta) {
 }
 
 /** Capture committed geometry and fixed polygon vertices without retaining live state. */
-export function captureSessionSnapshot({ imageState, annotationState, interactionState, labelColorAssignments, now = Date.now() }) {
+export function captureSessionSnapshot({ imageState, annotationState, interactionState, settingsState, labelColorAssignments, now = Date.now() }) {
   const currentPolygon = interactionState.currentPolygon || [];
   const hasDraft = currentPolygon.length > 0;
   const elapsed = Math.max(0, annotationState.annotationElapsedMs || 0);
@@ -180,6 +196,7 @@ export function captureSessionSnapshot({ imageState, annotationState, interactio
     imageName: imageState.imageName,
     imageSize: imageState.imageSize,
     calibration: imageState.calibration || null,
+    display: settingsState,
     annotations,
     lastPolygonLabel: annotationState.lastPolygonLabel,
     lastEllipseLabel: annotationState.lastEllipseLabel,
@@ -202,10 +219,11 @@ export function captureSessionSnapshot({ imageState, annotationState, interactio
 }
 
 /** Restore document data with a paused timer and no active pointer interaction. */
-export function applySessionSnapshot(snapshot, { imageState, annotationState, interactionState, labelColorAssignments }) {
+export function applySessionSnapshot(snapshot, { imageState, annotationState, interactionState, settingsState, labelColorAssignments }) {
   const saved = validateSessionSnapshot(snapshot, imageState.image
     ? { width: imageState.image.width, height: imageState.image.height } : undefined);
   Object.assign(imageState, { imageName: saved.imageName, imageSize: saved.imageSize, calibration: saved.calibration });
+  if (settingsState) Object.assign(settingsState, saved.display);
   Object.assign(annotationState, {
     annotations: saved.annotations,
     lastPolygonLabel: saved.lastPolygonLabel,

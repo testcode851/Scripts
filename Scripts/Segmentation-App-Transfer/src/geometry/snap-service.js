@@ -1,4 +1,5 @@
 import { clamp, getFittedGridAxis } from "./math.js";
+import { findNativeEdge } from "./native-edge-snap.js";
 
 /** Own the configurable image-space snapping pipeline. */
 export function createSnapService({
@@ -57,6 +58,10 @@ export function createSnapService({
     const maxX = Math.min(analysis.width - 2, anchorX + radius);
     const minY = Math.max(1, anchorY - radius);
     const maxY = Math.min(analysis.height - 2, anchorY + radius);
+    const threshold = settingsState.snapEdgeThreshold;
+    if (analysis.bitDepth === 16) {
+      return findNativeEdge(point, analysis, { minX, maxX, minY, maxY, anchorX, anchorY }, threshold);
+    }
     let bestX = anchorX;
     let bestY = anchorY;
     let bestScore = -1;
@@ -64,7 +69,7 @@ export function createSnapService({
     for (let y = minY; y <= maxY; y += 1) {
       for (let x = minX; x <= maxX; x += 1) {
         const score = analysis.gradient[y * analysis.width + x];
-        if (score < settingsState.snapEdgeThreshold) continue;
+        if (score < threshold) continue;
         const distance = Math.hypot(x - anchorX, y - anchorY);
         if (
           score > bestScore ||
@@ -113,7 +118,7 @@ export function createSnapService({
     const delta = Math.abs(bestValue - anchorValue);
     if (
       (bestX === anchorX && bestY === anchorY) ||
-      delta < settingsState.snapExtremaDelta
+      delta < settingsState.snapExtremaDelta * (analysis.thresholdScale ?? 1)
     ) {
       return point;
     }

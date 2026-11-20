@@ -3,6 +3,8 @@ export function createAppState(defaultSettings) {
   const slices = {
     image: {
       image: null,
+      originalFile: null,
+      native: null,
       imageName: "",
       imageSize: null,
       calibration: null,
